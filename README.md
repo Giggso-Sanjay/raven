@@ -14,12 +14,15 @@ How, in simple terms:
 
 All local. Zero telemetry. MIT.
 
-## Install (Claude Code plugin marketplace)
+## Install
 
-```
-/plugin marketplace add giggsoinc/raven
-/plugin install raven@raven
-```
+Raven is **not** in an Anthropic-hosted plugin marketplace — `/plugin marketplace add giggsoinc/raven` will not work. Pick one:
+
+1. **Clone + install** — `git clone https://github.com/giggsoinc/raven.git && claude plugin install ./raven/plugin`
+2. **Download zip + install** — grab `raven-plugin-v4.1.0.zip` from [releases](https://github.com/giggsoinc/raven/releases/latest), unzip it, then `claude plugin install /path/to/extracted/plugin`
+3. **Let Claude do it** — inside a Claude Code session, ask Claude to clone the repo and run the install command for you (same two steps as Option 1, just delegated)
+
+Full walkthrough (enterprise admin upload, org-wide managed deployment, troubleshooting): [claude_plugin_readme.md](./claude_plugin_readme.md)
 
 Then restart your session. You should see the Raven greeting:
 
@@ -27,6 +30,23 @@ Then restart your session. You should see the Raven greeting:
 🪶 Raven ✅  |  {your-project}  |  {stack}
    Andie is your discipline layer. What are you working on?
 ```
+
+## Getting Started — After Install
+
+The plugin gives Claude the skills and guards. Each **project** still needs a one-time setup pass for hooks, engine scripts, and a manifest:
+
+```bash
+bash <(curl -fsSL https://raw.githubusercontent.com/giggsoinc/raven/main/install.sh)   # once per machine
+cd your-project && raven-setup                                                         # once per project
+```
+
+### New repo (greenfield)
+
+`raven-setup` finds no file signatures in an empty directory, so it asks 1–3 quick questions (mode: solo/team/enterprise, primary language, cloud provider) and builds `.raven/manifest.json` entirely from your answers. Start working normally — Andie routes every prompt and guards activate as soon as files exist.
+
+### Existing repo (brownfield)
+
+`raven-setup` runs a detector that auto-classifies the work type (code / infra / data / docs / salesforce / odoo / mixed) from file signatures already in your repo. **Known limitation:** that only sets the work-mode label — it does not read `package.json`/`requirements.txt`/etc. to auto-fill the manifest's stack fields, so you'll still be asked to manually pick languages, databases, and cloud provider even though that info is already in the repo. If `.raven/manifest.json` already exists, setup skips straight to "already configured."
 
 ## Quick start
 
