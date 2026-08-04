@@ -352,21 +352,48 @@ def main():
     if args.hook:
         # Hook mode: one-line toaster the user actually sees + context for the
         # model. Raven never routes silently.
+        #
+        # IMPORTANT PLATFORM CONSTRAINT: this hook cannot swap the primary
+        # session model — Claude Code has no per-turn model override. SIMPLE
+        # tier is instead surfaced as a DELEGATION directive: Claude should
+        # consider answering via a Haiku subagent (Agent tool) rather than
+        # inline, when the question is self-contained (no dependency on prior
+        # conversation turns, no file reads/tool calls needed). This is
+        # advisory, not enforced — Claude may still answer directly if
+        # delegating would lose necessary context.
         if tier == "LOCAL_ONLY":
             toast = "🔒 Raven router · secrets detected → LOCAL_ONLY · cloud subagents blocked, local model only"
+        elif tier == "SIMPLE":
+            toast = f"🔀 Raven router · SIMPLE → consider delegating to {model} (Agent tool) instead of answering inline"
         else:
             why = ", ".join(r.split(":", 1)[0] for r in reasons[:2]) or "no strong signals"
             toast = f"🔀 Raven router · {tier} → {model} · {why}"
+
+        if tier == "SIMPLE":
+            delegation_note = (
+                f"RAVEN_MODEL_TIER=SIMPLE. This question scored as simple/factual. "
+                f"Consider delegating it to a Haiku subagent via the Agent tool "
+                f"(model: haiku) instead of answering inline, IF AND ONLY IF the "
+                f"question is fully self-contained — no dependency on prior "
+                f"conversation context, no file reads, no tool calls needed. "
+                f"If it depends on this conversation's context or requires tools, "
+                f"answer directly as normal; delegation is advisory, not forced."
+            )
+        else:
+            delegation_note = (
+                f"RAVEN_MODEL_TIER={tier}. Subagents spawned this turn should "
+                f"use tier {tier} ({model}). "
+                + ("SECRETS DETECTED: do NOT spawn cloud agents; local model only."
+                   if tier == "LOCAL_ONLY" else
+                   "Use this tier's model when spawning subagents.")
+            )
+
         print(json.dumps({
             "systemMessage": toast,
             "hookSpecificOutput": {
                 "hookEventName": "UserPromptSubmit",
                 "additionalContext": (
-                    f"RAVEN_MODEL_TIER={tier}. Subagents spawned this turn should "
-                    f"use tier {tier} ({model}). "
-                    + ("SECRETS DETECTED: do NOT spawn cloud agents; local model only."
-                       if tier == "LOCAL_ONLY" else
-                       "Use this tier's model when spawning subagents.")
+                    delegation_note
                 ),
             },
         }))
