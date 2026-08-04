@@ -9,12 +9,13 @@ Precedence (mutually exclusive with architect-router — no double-fire):
   2. Data-only question (explicit keywords, no code change) → direct answer
   3. Architecture-class prompt (decision intent, no symptom) → SILENT here;
      architect-router owns it and routes to Andie
-  4. Brownfield (git exists + commits > 1) → Andie-jr
-  5. Greenfield (no .git OR ≤1 commit) → Andie (planning first)
+  4. Symptom language (broken/failing/error...) → Andie-jr
+  5. Change-to-existing-code verb (fix/update/modify...) + brownfield → Andie-jr
+  6. Everything else (plain prompt, no symptom) → Andie (ideation/planning)
 
-Repo state is the signal for 4/5. If we have code history, we debug with
-Andie-jr; mid-session escalation to Andie when a bug turns out architectural
-is Andie-jr's skill-level handoff contract.
+Prompt intent is the signal for 4-6 — repo state only qualifies rule 5.
+Mid-session escalation to Andie when a bug turns out architectural is
+Andie-jr's skill-level handoff contract.
 
 Local-only. No telemetry.
 """
@@ -118,24 +119,48 @@ def is_architecture_class(prompt: str) -> bool:
     return bool(mod and mod.classify(prompt))
 
 
+# Change-to-existing-code verbs — with git history present these mean
+# "work on what exists", not ideation. Symptom language is the stronger
+# andie-jr signal and is checked first.
+# Explicit ideation language — always Andie territory, even when the prompt
+# also contains question words that would otherwise read as data-only.
+_IDEATION = re.compile(
+    r"\b(?:brainstorm|idea(?:s|te|tion)?|what\s+if|imagine|"
+    r"explore\s+(?:options|ideas|approaches)|concept|ideat\w*)\b",
+    re.IGNORECASE)
+
+_EXISTING_CODE_CHANGE = re.compile(
+    r"\b(?:fix|debug|patch|update|modify|remove|delete|clean\s*up|"
+    r"troubleshoot|investigate)\b", re.IGNORECASE)
+
+
 def classify(prompt: str) -> Optional[str]:
-    """Return 'andie-jr' for brownfield, 'andie' for greenfield, None when
-    triage should stay silent (data-only, or architect-router owns it)."""
+    """Return 'andie-jr' for issue/existing-code prompts, 'andie' for
+    ideation/planning prompts, None when triage should stay silent
+    (data-only, trivial, or architect-router owns it)."""
     symptom = is_symptom(prompt)
 
     if not symptom and _TRIVIAL.match(prompt) and len(prompt.split()) <= 8:
         return None  # trivial bounded edit — no panel needed
 
-    if is_data_question(prompt) and not symptom:
-        return None  # direct answer — but symptom language overrides ("why is X failing")
+    ideation = bool(_IDEATION.search(prompt))
+
+    if is_data_question(prompt) and not symptom and not ideation:
+        return None  # direct answer — but symptom/ideation language overrides
 
     if is_architecture_class(prompt):
         return None  # decision/architecture intent → architect-router routes to Andie
 
-    if is_brownfield():
-        return "andie-jr"  # existing code = debug/fix mode
-    else:
-        return "andie"  # new project = planning mode
+    if ideation and not symptom:
+        return "andie"  # explicit ideation language wins over change verbs
+
+    if symptom:
+        return "andie-jr"  # issue/bug language = debug mode
+
+    if is_brownfield() and _EXISTING_CODE_CHANGE.search(prompt):
+        return "andie-jr"  # change to existing code = debug/fix mode
+
+    return "andie"  # plain prompt, no symptom = ideation/planning mode
 
 
 def main() -> None:
@@ -167,10 +192,10 @@ def main() -> None:
     # else: None → data question, or architect-router owns it (no emission)
 
 
-def _emit_andie_jr(reason: str = "brownfield repo detected") -> None:
+def _emit_andie_jr(reason: str = "issue/existing-code prompt detected") -> None:
     """Emit [ANDIE-JR REQUIRED] injection + user-visible toaster."""
     emission = (
-        "[ANDIE-JR REQUIRED] Brownfield repo detected. MANDATORY: invoke "
+        "[ANDIE-JR REQUIRED] Issue or existing-code work detected. MANDATORY: invoke "
         "`andie-jr` skill BEFORE any diagnosis, file read, bash command, or "
         "response. Andie-jr structures the debug flow: problem → root cause → "
         "fix → why → audit note.\n"
@@ -179,10 +204,10 @@ def _emit_andie_jr(reason: str = "brownfield repo detected") -> None:
     log_overhead("triage-router", emission)
 
 
-def _emit_andie(reason: str = "greenfield project detected") -> None:
+def _emit_andie(reason: str = "ideation/planning prompt detected") -> None:
     """Emit [ANDIE REQUIRED] injection + user-visible toaster."""
     emission = (
-        "[ANDIE REQUIRED] Greenfield project detected. MANDATORY: invoke "
+        "[ANDIE REQUIRED] Ideation/planning prompt detected. MANDATORY: invoke "
         "`andie` skill BEFORE any coding. Andie structures planning: problem → "
         "angles → decisions → plan. Then /andie-jr for implementation.\n"
     )

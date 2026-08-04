@@ -73,7 +73,7 @@ This is also where **Andie-Jr** earns its keep: once the manifest is in place, a
 - **61 domain skills** — FastAPI, Postgres, K8s, Terraform, Salesforce, Odoo, Oracle, AWS/GCP/Azure, and more, loaded only when your work matches
 - **Local guards** — secret scan + CVE check (CVSS >7 blocks) at every commit; optional edit gate (`raven-skill-gate`, shadow/soft/hard modes); style and architecture checks
 - **Cost-aware model routing** — prompts classified to the cheapest adequate tier; secret-laden context forced to a local model
-- **Audit + memory** — JSONL audit logs, session notes, token dashboard — all on local disk
+- **Audit + memory** — JSONL audit logs, session notes, token dashboard ([docs/DASHBOARD.md](docs/DASHBOARD.md)) — all on local disk
 
 ## When to Use Raven — Use Case Table
 
@@ -194,7 +194,19 @@ diagrams: [business view](docs/Agent_token_architecture_business.html) ·
 
 ## Features by Version
 
-### **Raven v4.1.0** (Current) — Privacy + Routing Hardening
+### **Raven v4.3.0** (Current) — Tokenomics Metering + Vibe-Coder Dashboard
+
+**New:**
+- **Token metering** — `token-meter-write.py` Stop hook records tokens, cost, and call counts per session (session JSON + monthly rollup + audit log). Session-end meters printed in-terminal.
+- **Dashboard upgrade** — local HTML dashboard (`~/RavenVault/dashboard.html`) now shows tokenomics with a Raven-metered vs Claude-reported cost comparison. See [docs/DASHBOARD.md](docs/DASHBOARD.md).
+- **Knowledge-graph icons** — picture-map UI for non-programmers; SVG icons inlined for offline `file://` use. Zero-code guide: [docs/VIBE-CODER-MAP.md](docs/VIBE-CODER-MAP.md).
+- Andie v6.4 (one hard gate, implicit GO, GATES ledger, critic voice) + routing toasters — Raven never routes silently.
+
+### **Raven v4.2.0** — RavenVault Knowledge Graph & Agent Memory
+
+- Vault-backed cross-session memory with graph export; see [docs/CHANGELOG-4.2.0-vault-graph.md](docs/CHANGELOG-4.2.0-vault-graph.md) and [docs/RAVENVAULT-GRAPH-AND-MEMORY.md](docs/RAVENVAULT-GRAPH-AND-MEMORY.md).
+
+### **Raven v4.1.0** — Privacy + Routing Hardening
 
 **New:**
 - Privacy hardening: Changelog cleared from manifest, personal emails replaced with org email across all registries.

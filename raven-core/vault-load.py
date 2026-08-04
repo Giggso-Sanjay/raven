@@ -113,10 +113,27 @@ def build_digest(project: str) -> str:
 
     lines = [
         "🪶 RavenVault digest (curated — not full vault)",
-        f"Project hub: [[projects/{project}]]",
-        "",
-        "Current state:",
     ]
+    try:
+        from vault_common import dashboard_link_lines  # noqa: E402
+
+        lines.extend(dashboard_link_lines(when="session digest — open on every run"))
+    except Exception:
+        dash = pathlib.Path.home() / "RavenVault" / "dashboard.html"
+        lines.extend(
+            [
+                f"📊 Dashboard (open this): {dash}",
+                f"   file://{dash}",
+                "   Rebuild: python3 scripts/dashboard.py --html --open",
+            ]
+        )
+    lines.extend(
+        [
+            f"Project hub: [[projects/{project}]]",
+            "",
+            "Current state:",
+        ]
+    )
     lines += [f"  • {s}" for s in state] or ["  • (empty)"]
     lines.append("Open questions:")
     lines += [f"  • {q}" for q in open_qs] or ["  • (none)"]
@@ -126,10 +143,16 @@ def build_digest(project: str) -> str:
     lines += [f"  • {d}" for d in decisions] or ["  • (none yet)"]
     if graph.exists():
         lines.append(f"Graph export: {graph}")
-    # concepts count hint
     n_concepts = len(list(CONCEPTS.glob("*.md"))) if CONCEPTS.exists() else 0
-    if n_concepts:
-        lines.append(f"Concepts on disk: {n_concepts} under ~/RavenVault/concepts/")
+    n_sessions = len(list(SESSIONS.glob(f"*-{project}.md"))) if SESSIONS.exists() else 0
+    n_dec = len(list(DECISIONS.glob("*.md"))) if DECISIONS.exists() else 0
+    lines.append("")
+    lines.append("Memory sources (RavenVault — load these, not full vault dumps):")
+    lines.append(f"  · Hub: ~/RavenVault/projects/{project}.md")
+    lines.append(f"  · Sessions: {n_sessions} note(s) in ~/RavenVault/sessions/*-{project}.md")
+    lines.append(f"  · Concepts: {n_concepts} · Decisions: {n_dec}")
+    lines.append("  · Dashboard: ~/RavenVault/dashboard.html (human view of same memory)")
+    lines.append("  · Prefer open questions + last decisions before inventing architecture.")
     text = "\n".join(lines)
     if len(text) > MAX_CHARS:
         text = text[: MAX_CHARS - 20] + "\n… (truncated)"

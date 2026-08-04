@@ -90,6 +90,9 @@ ls ~/RavenVault/projects/
 
 ## 4. Knowledge graph — how to use it
 
+**Vibe-coder (zero code skills):** [VIBE-CODER-MAP.md](./VIBE-CODER-MAP.md) — icons, picture dictionary, click-only workflow.  
+Icons: `assets/kg-icons/*.svg` + `scripts/kg_icons.py` (frontmatter `icon:` or keyword match).
+
 ### Build / open
 
 ```bash
@@ -139,9 +142,33 @@ Hub format:
 - Local: /Users/you/AntiGravity_Projects/Proj1/fin-processor
 ```
 
-### Costs — what is grounded
+### Costs — two columns (do not confuse them)
 
-| Card | Source citation |
+| Column | What it is | Accurate for |
+|--------|------------|--------------|
+| **Raven-metered** | Token consumption seen by Raven hooks × model rate card (`log-overhead`, `token-meter-write` × `model-pricing.json`) | Local discipline / overhead / partial session capture |
+| **Claude / external** | Numbers you or Claude paste into `~/RavenVault/.metrics/external-usage.json` (Console, export, estimate) | Real money when filled from Anthropic billing |
+
+Dashboard sections:
+
+1. **Cost method** — explains both sources  
+2. **Cost compare** — side-by-side per repo + Δ  
+3. **Headline numbers** — **Raven-metered only**, each value cited **[C#]**
+
+#### Ask Claude to supply external data (paste this)
+
+```
+Copy Anthropic Console usage (or your best estimate) into
+~/RavenVault/.metrics/external-usage.json using the template at
+~/RavenVault/.metrics/external-usage.template.json.
+Include by_project entries (e.g. fin-processor) with tokens + cost_usd
+for the same ~30 day window as the Raven dashboard.
+Then run: python3 scripts/dashboard.py --html --open
+and open the side-by-side Cost compare section.
+Do not invent per-repo splits if you only have org totals — put those under total.notes.
+```
+
+| Card (Raven column) | Source citation |
 |------|-----------------|
 | All repos | **[C1]** `~/RavenVault/.metrics/*.json` project-tagged rows |
 | This repo | **[C2]** same, filtered by project |
@@ -150,8 +177,8 @@ Hub format:
 | Notes / hubs | **[C5]** vault markdown |
 | Guards | **[C6]** `.raven/audit/*.log` |
 
-**Not in headlines:** unscoped legacy `by_day` (no project; historically inflated).  
-**Small $ amounts are real** when only router overhead was metered — shown as `$0.000212`, never `$0.00`.
+**Not in Raven headlines:** unscoped legacy `by_day` (no project; historically inflated).  
+**Small Raven $ amounts** often mean only router overhead was metered — still shown as `$0.000212`, never `$0.00`.
 
 ---
 

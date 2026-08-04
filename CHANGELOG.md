@@ -5,7 +5,55 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 
 ---
 
-## [Unreleased] — 2026-06-10
+## [4.3.0] — 2026-08-04
+
+### Tokenomics metering + vibe-coder dashboard
+
+**Token metering (new):**
+- `token-meter-write.py` — Stop hook that reads the session transcript JSONL,
+  extracts token usage, calculates cost, and writes metrics to three files:
+  per-session JSON, monthly rollup, and audit log. Non-blocking, fail-soft.
+- Session-end meters in `session-gate.py`: every session close prints
+  `📊 Session meters: <tokens> tok · $<cost> · <raven/user> calls`.
+- Metering state lives under `.raven/state/` (new, per-project).
+
+**Dashboard (major upgrade — `dashboard.py`):**
+- Tokenomics view: Raven-metered usage side-by-side with Claude/external-reported
+  usage (`load_external_usage` + editable template so users can paste Claude's
+  own numbers for comparison).
+- Cost-compare section rendered into the HTML dashboard at `~/RavenVault/dashboard.html`.
+- Dashboard is rebuilt on every session start/end; manual rebuild:
+  `python3 scripts/dashboard.py --html --open`.
+
+**Knowledge-graph icons (vibe-coder UI):**
+- New `kg_icons.py` + `assets/kg-icons/*.svg` — tiny SVG icons inlined as
+  data-URIs so `file://` dashboards work fully offline (no CDN).
+- Graph nodes now carry picture-dictionary icons: 📦 project, 💡 concept,
+  ✅ decision, ⏱️ session, 🔐 login, 🛡️ security, 🗄️ database, 🔌 api,
+  🖥️ ui, 💳 money, ☁️ cloud, 🔄 workflow, 💻 code.
+- `knowledge_graph.py` / `knowledge-extract.py` updated to classify and tag nodes.
+
+**Docs (new):**
+- `docs/VIBE-CODER-MAP.md` — zero-code guide to reading the picture map.
+- `docs/DASHBOARD.md` — what the dashboard shows and how to rebuild it.
+- `docs/RAVENVAULT-GRAPH-AND-MEMORY.md` refreshed for icons + metering.
+
+**Plumbing:**
+- `.claude/scripts/` now ships the full hook script set (dashboard,
+  knowledge-extract, knowledge_graph, obsidian-log, session-gate,
+  session-start, token-meter-write, vault-load, vault_common).
+- `plugin/make-plugin.sh` + `plugin/settings.json` package the new scripts.
+
+---
+
+## [4.2.0] — 2026-07-xx
+
+RavenVault knowledge graph & agent memory. Full details:
+[docs/CHANGELOG-4.2.0-vault-graph.md](docs/CHANGELOG-4.2.0-vault-graph.md).
+
+---
+
+## [4.1.x unreleased work] — 2026-06-10
 
 ### Andie v6.4 + routing visibility + LOCAL_ONLY hard floor
 
@@ -100,7 +148,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 **Truth alignment (docs now match code):**
 - Rewrote README to remove false/misleading claims — "always-on" guards → event-driven,
   "current session" token counter → previous-session, Obsidian "token reduction" →
-  cross-session memory, dropped the "57% savings" perf table and "expert system" framing.
+  cross-session memory, dropped the "57% savings" perf table and the misleading framing (it's prompt templates + routing, described as such).
 - Corrected skill count to the **verified 61** (was wrongly 60/46/55 across docs).
 - Added an Honest ROI section ("when to use, and when NOT to") and per-persona messaging.
 - Added `CONTRIBUTING.md` truth-rule: no claim ships unless true of the code now.
@@ -130,7 +178,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 
 - Plugin manifest bumped to v4.0.0.
 - Description updated to reflect current architecture.
-- 60 skills, 11 agents — unchanged from prior version.
+- 61 skills, 11 agents — unchanged from prior version.
 - Plugin zip rebuilt: `raven-plugin-v4.0.0.zip`.
 - Backwards-compatible with v4.0.0 — structural updates only.
 

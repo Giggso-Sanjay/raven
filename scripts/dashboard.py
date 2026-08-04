@@ -163,6 +163,194 @@ def format_usd(amount: float, *, force_cents: bool = False) -> str:
     return f"${v:.6f}"
 
 
+EXTERNAL_USAGE_PATH = VAULT / ".metrics" / "external-usage.json"
+EXTERNAL_USAGE_TEMPLATE = VAULT / ".metrics" / "external-usage.template.json"
+
+
+def load_external_usage() -> dict:
+    """Optional Claude/Anthropic-reported usage for side-by-side compare.
+
+    File: ~/RavenVault/.metrics/external-usage.json
+    (never auto-filled by Raven — human or Claude pastes after Console/export.)
+    """
+    if not EXTERNAL_USAGE_PATH.exists():
+        return {}
+    try:
+        data = json.loads(EXTERNAL_USAGE_PATH.read_text())
+        return data if isinstance(data, dict) else {}
+    except Exception:
+        return {"error": f"unreadable {EXTERNAL_USAGE_PATH}"}
+
+
+def ensure_external_usage_template() -> None:
+    """Write a template file users/Claude can fill for comparison."""
+    try:
+        VAULT_METRICS.mkdir(parents=True, exist_ok=True)
+        if EXTERNAL_USAGE_TEMPLATE.exists():
+            return
+        EXTERNAL_USAGE_TEMPLATE.write_text(
+            json.dumps(
+                {
+                    "source": "anthropic_console | claude_session_estimate | user_paste",
+                    "as_of": "YYYY-MM-DD",
+                    "window_days": 30,
+                    "notes": "Paste totals from Anthropic Console or ask Claude to estimate from known usage. Raven does not fill this file.",
+                    "total": {"tokens": 0, "cost_usd": 0.0},
+                    "by_project": {
+                        "fin-processor": {
+                            "tokens": 0,
+                            "cost_usd": 0.0,
+                            "notes": "example — replace with real numbers",
+                        }
+                    },
+                },
+                indent=2,
+            )
+            + "\n"
+        )
+    except Exception:
+        pass
+
+
+def render_cost_compare_section(metrics: dict, metadata: dict) -> str:
+    """Side-by-side: Raven-metered vs Claude/external-reported."""
+    ensure_external_usage_template()
+    ext = load_external_usage()
+    bp = metrics.get("by_project") or {}
+    window = f"{metrics.get('window_start')} → {metrics.get('window_end')}"
+
+    ext_bp = ext.get("by_project") if isinstance(ext.get("by_project"), dict) else {}
+    ext_total = ext.get("total") if isinstance(ext.get("total"), dict) else {}
+    names = sorted(set(list(bp.keys()) + list(ext_bp.keys())), key=str.lower)
+
+    rows = ""
+    for name in names:
+        r = bp.get(name) or {}
+        e = ext_bp.get(name) if isinstance(ext_bp.get(name), dict) else {}
+        r_tok = int(r.get("tokens") or 0)
+        r_cost = float(r.get("cost_usd") or 0)
+        e_tok = e.get("tokens")
+        e_cost = e.get("cost_usd")
+        e_tok_s = f"{int(e_tok):,}" if e_tok is not None else "—"
+        e_cost_s = format_usd(float(e_cost)) if e_cost is not None else "—"
+        # delta only when external present
+        if e_cost is not None:
+            delta = float(e_cost) - r_cost
+            delta_s = format_usd(delta) if delta >= 0 else f"-{format_usd(abs(delta))}"
+            ratio = (float(e_cost) / r_cost) if r_cost > 0 else ("∞" if float(e_cost) > 0 else "—")
+            if isinstance(ratio, float):
+                ratio_s = f"{ratio:.1f}×"
+            else:
+                ratio_s = str(ratio)
+        else:
+            delta_s = "—"
+            ratio_s = "—"
+        rows += (
+            f"<tr><td><strong>{name}</strong></td>"
+            f"<td class='num'>{r_tok:,}</td><td class='num'>{format_usd(r_cost)}</td>"
+            f"<td class='num'>{e_tok_s}</td><td class='num'>{e_cost_s}</td>"
+            f"<td class='num'>{delta_s}</td><td class='num'>{ratio_s}</td></tr>\n"
+        )
+    if not rows:
+        rows = "<tr><td colspan='7' style='color:#94a3b8'>No Raven per-repo rows yet.</td></tr>"
+
+    r_tot_t = int(metrics.get("total_tokens") or 0)
+    r_tot_c = float(metrics.get("total_cost_usd") or 0)
+    e_tot_t = ext_total.get("tokens")
+    e_tot_c = ext_total.get("cost_usd")
+    e_tot_t_s = f"{int(e_tot_t):,}" if e_tot_t is not None else "—"
+    e_tot_c_s = format_usd(float(e_tot_c)) if e_tot_c is not None else "—"
+
+    has_ext = bool(ext) and "error" not in ext and (
+        ext_bp or e_tot_c is not None or e_tot_t is not None
+    )
+    if has_ext:
+        status = (
+            f"<p style='color:#86efac;font-size:13px;'>External file loaded: "
+            f"<code>{EXTERNAL_USAGE_PATH}</code> · source={ext.get('source','?')} · "
+            f"as_of={ext.get('as_of','?')} · window_days={ext.get('window_days','?')}</p>"
+        )
+    elif ext.get("error"):
+        status = f"<p style='color:#f59e0b;font-size:13px;'>{ext.get('error')}</p>"
+    else:
+        status = f"""
+<p style="color:#fbbf24;font-size:13px;margin-bottom:12px;">
+  <strong>No Claude/external usage file yet.</strong>
+  Raven column is filled automatically. Claude column stays empty until you (or Claude) write:
+  <code>{EXTERNAL_USAGE_PATH}</code>
+  (template: <code>{EXTERNAL_USAGE_TEMPLATE}</code>).
+</p>
+"""
+
+    claude_prompt = """Ask Claude (in any project session):
+
+Copy Anthropic Console usage (or your best estimate) into
+~/RavenVault/.metrics/external-usage.json using the template at
+external-usage.template.json. Include by_project.fin-processor (and others)
+with tokens + cost_usd for the same ~30 day window as the Raven dashboard.
+Then run: python3 scripts/dashboard.py --html --open
+and open the side-by-side Cost compare section.
+
+If you only have org totals (not per-repo), put them under total and note that
+in notes — do not invent per-repo splits."""
+
+    return f"""
+  <h2 id="cost-method">📐 What “cost” means here (two sources)</h2>
+  <div class="meta" style="border-left:4px solid #38bdf8;margin-bottom:16px;font-size:14px;line-height:1.55;">
+    <p style="margin-bottom:10px;"><strong>1) Raven-metered (left columns)</strong> — computed from
+    <em>code-path token consumption</em> × <em>model rate cards</em>, not from your invoice:</p>
+    <ul style="margin:0 0 12px 18px;color:#cbd5e1;">
+      <li><code>log-overhead.py</code> — estimated hook/router tokens during the session</li>
+      <li><code>token-meter-write.py</code> on Stop — transcript <code>usage</code> ×
+        <code>scripts/model-pricing.json</code></li>
+      <li>Stored in <code>.raven/.model-session.json</code> and
+        <code>~/RavenVault/.metrics/YYYY-MM.json</code> (project-tagged when available)</li>
+    </ul>
+    <p style="margin-bottom:10px;"><strong>2) Claude / Anthropic-reported (right columns)</strong> —
+    numbers <em>you or Claude paste</em> from Console, export, or session estimate.
+    Raven never scrapes billing APIs.</p>
+    <p style="color:#94a3b8;font-size:13px;margin:0;">
+    Window for Raven column: <strong>{window}</strong>
+    ({metrics.get('window_days')}d). Compare only when external window matches.
+    Large gaps (e.g. Raven $0.002 vs Claude $100+) mean meters under-captured real model usage —
+    trust the Claude/Console side for money, Raven side for local discipline telemetry.
+    </p>
+  </div>
+
+  <h2 id="cost-compare">⚖️ Cost compare — Raven vs Claude/external</h2>
+  {status}
+  <table>
+    <thead>
+      <tr>
+        <th>Repo</th>
+        <th class="num">Raven tokens</th>
+        <th class="num">Raven $</th>
+        <th class="num">Claude/ext tokens</th>
+        <th class="num">Claude/ext $</th>
+        <th class="num">Δ $ (ext − Raven)</th>
+        <th class="num">ext / Raven</th>
+      </tr>
+    </thead>
+    <tbody>
+      {rows}
+      <tr style="background:#0f172a;">
+        <td><strong>TOTAL</strong></td>
+        <td class="num"><strong>{r_tot_t:,}</strong></td>
+        <td class="num"><strong>{format_usd(r_tot_c)}</strong></td>
+        <td class="num"><strong>{e_tot_t_s}</strong></td>
+        <td class="num"><strong>{e_tot_c_s}</strong></td>
+        <td class="num">—</td>
+        <td class="num">—</td>
+      </tr>
+    </tbody>
+  </table>
+  <div class="meta" style="margin-top:16px;font-size:13px;color:#cbd5e1;">
+    <strong>Prompt to give Claude</strong>
+    <pre style="white-space:pre-wrap;margin-top:8px;padding:12px;background:#0f172a;border-radius:8px;color:#e2e8f0;font-size:12px;">{claude_prompt}</pre>
+  </div>
+"""
+
+
 def cite_chip(cid: str, label: str = "") -> str:
     """Inline citation anchor → bibliography entry #cite-N."""
     tip = label or cid
@@ -1948,8 +2136,30 @@ def render_knowledge_graph_section(
     edges = graph.get("edges") or []
     n_nodes, n_edges = len(nodes), len(edges)
     briefings = build_node_briefings(graph, metrics, metadata)
+    # Ensure nodes carry vibe icons (emoji + data-URI)
+    try:
+        from kg_icons import enrich_node, legend_html, icon_img_html, resolve_icon_key, emoji_for
+    except ImportError:
+        try:
+            from scripts.kg_icons import (  # type: ignore
+                enrich_node,
+                legend_html,
+                icon_img_html,
+                resolve_icon_key,
+                emoji_for,
+            )
+        except ImportError:
+            enrich_node = None  # type: ignore
+            legend_html = lambda: ""  # type: ignore
+            icon_img_html = lambda *a, **k: ""  # type: ignore
+            resolve_icon_key = None  # type: ignore
+            emoji_for = lambda k: "❓"  # type: ignore
+    if enrich_node and graph.get("nodes"):
+        graph = dict(graph)
+        graph["nodes"] = [enrich_node(n) for n in graph["nodes"]]
     graph_json = json.dumps(graph, default=str)
     brief_json = json.dumps(briefings, default=str)
+    legend = legend_html() if callable(legend_html) else ""
 
     if n_nodes < 2:
         return f"""
@@ -1990,9 +2200,16 @@ def render_knowledge_graph_section(
             local = resolve_local_path(pname, hub_txt)
         local_html = _local_link_html(local, "Local")
         local_uri = _local_uri(local)
+        # icon for this project chip
+        pnode = next(
+            (n for n in (graph.get("nodes") or []) if n.get("id") == f"projects/{pname}"),
+            {},
+        )
+        ico = (pnode or {}).get("icon") or "project"
+        ico_html = icon_img_html(ico, 16, pname) if icon_img_html else "📦"
         repo_rows += (
             f"<tr style='cursor:pointer' onclick=\"window.kgShowNode('projects/{pname}')\">"
-            f"<td><strong>{pname}</strong></td>"
+            f"<td>{ico_html} <strong>{pname}</strong></td>"
             f"<td class='num'>{st.get('sessions',0)}</td>"
             f"<td class='num'>{int(st.get('tokens',0)):,}</td>"
             f"<td class='num'>{format_usd(st.get('cost_usd',0))}</td>"
@@ -2005,7 +2222,7 @@ def render_knowledge_graph_section(
             f"<span class='kg-chip-wrap'>"
             f"<a class='kg-chip' href='#' "
             f"title='Briefing' onclick=\"event.preventDefault(); window.kgShowNode('projects/{pname}');\">"
-            f"{pname}</a>"
+            f"{ico_html} {pname}</a>"
             f"<a class='kg-chip-link' href='{url}' target='_blank' rel='noopener' title='GitHub'>GitHub ↗</a>"
         )
         if local_uri:
@@ -2021,10 +2238,11 @@ def render_knowledge_graph_section(
 
     return f"""
   <h2 id="knowledge-graph">🕸 Knowledge graph</h2>
+  {legend}
   <p style="color:#94a3b8;font-size:13px;margin-bottom:12px;">
-    Click a <strong>node</strong> for Summary · notes · cost/CVE · repo.
-    Empty canvas / <strong>Center</strong> = portfolio. Chips = every project in the graph.
-    Nodes: {n_nodes} · Edges: {n_edges} · filter: {graph.get('project_filter') or 'all'}
+    Click a <strong>node</strong> / chip for Summary · notes · cost/CVE · repo.
+    Empty canvas / <strong>Center</strong> = portfolio.
+    You do not need to read code to use this map.
   </p>
   <style>
     .kg-chip {{ display:inline-block; margin:3px 2px; padding:6px 10px; background:#312e81; color:#e0e7ff;
@@ -2035,6 +2253,8 @@ def render_knowledge_graph_section(
       padding:4px 8px; background:#1e293b; border-radius:999px; border:1px solid #334155; }}
     .kg-drill a {{ color:#38bdf8; cursor:pointer; text-decoration:none; margin-right:8px; }}
     .kg-drill a:hover {{ text-decoration:underline; }}
+    #kg-svg text {{ pointer-events: none; }}
+    #kg-svg circle, #kg-svg rect {{ cursor: pointer; }}
   </style>
   <div style="margin-bottom:12px;">
     <button type="button" class="download" style="background:#8b5cf6;" onclick="window.kgShowNode('__center__')">◎ Center overview</button>
@@ -2042,6 +2262,7 @@ def render_knowledge_graph_section(
   <div style="margin-bottom:16px;">
     <div style="font-size:12px;color:#94a3b8;margin-bottom:6px;">
       Projects in graph — name = briefing · <strong>GitHub ↗</strong> · <strong style="color:#86efac">Local 📁</strong>
+      (always visible; does not need the force-canvas)
     </div>
     <div>{project_chips or '<span style="color:#94a3b8">No project nodes</span>'}</div>
   </div>
@@ -2054,11 +2275,11 @@ def render_knowledge_graph_section(
   </div>
   <div style="display:grid;grid-template-columns:minmax(280px,1fr) minmax(320px,1.1fr);gap:16px;align-items:start;">
     <div>
-      <div id="kg-canvas" style="height:520px;background:#1e293b;border-radius:8px;border:1px solid #334155;"></div>
-      <div id="kg-nodelist" style="margin-top:12px;max-height:220px;overflow:auto;background:#1e293b;border-radius:8px;padding:8px;"></div>
+      <div id="kg-canvas" style="height:520px;background:#1e293b;border-radius:8px;border:1px solid #334155;overflow:hidden;"></div>
+      <div id="kg-nodelist" style="margin-top:12px;max-height:280px;overflow:auto;background:#1e293b;border-radius:8px;padding:8px;"></div>
     </div>
     <div id="kg-panel" style="background:#1e293b;border-radius:8px;border:1px solid #334155;padding:16px 18px;min-height:520px;">
-      <p style="color:#94a3b8;font-size:14px;">Select a node or Center to load the Guru briefing.</p>
+      <p style="color:#94a3b8;font-size:14px;">Select a node or Center to load the briefing.</p>
     </div>
   </div>
 
@@ -2196,47 +2417,116 @@ def render_knowledge_graph_section(
       try {{ document.getElementById('kg-panel').scrollIntoView({{ behavior: 'smooth', block: 'nearest' }}); }} catch (e) {{}}
     }};
 
+    function drawOfflineSvg(nodesArr, edgesArr) {{
+      // Always-on layout (no CDN). Circular placement — data is never "gone".
+      const container = document.getElementById('kg-canvas');
+      const W = Math.max(container.clientWidth || 480, 320);
+      const H = 500;
+      const cx = W / 2, cy = H / 2;
+      const R = Math.min(W, H) * 0.38;
+      const n = nodesArr.length || 1;
+      const pos = {{}};
+      nodesArr.forEach(function(node, i) {{
+        const a = (2 * Math.PI * i) / n - Math.PI / 2;
+        pos[node.id] = {{ x: cx + R * Math.cos(a), y: cy + R * Math.sin(a) }};
+      }});
+      let edgesSvg = edgesArr.map(function(e) {{
+        const a = pos[e.from], b = pos[e.to];
+        if (!a || !b) return '';
+        return '<line x1="'+a.x+'" y1="'+a.y+'" x2="'+b.x+'" y2="'+b.y+
+          '" stroke="#475569" stroke-width="1.2" />';
+      }}).join('');
+      let nodesSvg = nodesArr.map(function(node) {{
+        const p = pos[node.id];
+        const col = node.color || '#64748b';
+        const lab = (node.label || node.id || '').slice(0, 14);
+        const emo = node.emoji || '❓';
+        const idSafe = String(node.id).replace(/"/g, '');
+        if (node.shape === 'box') {{
+          return '<g class="kg-node" data-id="'+idSafe+'" transform="translate('+p.x+','+p.y+')">' +
+            '<rect x="-40" y="-18" width="80" height="36" rx="8" fill="'+col+'" opacity="0.92"/>' +
+            '<text text-anchor="middle" y="-2" font-size="14">'+emo+'</text>' +
+            '<text text-anchor="middle" y="14" fill="#f8fafc" font-size="9" font-family="system-ui">'+esc(lab)+'</text></g>';
+        }}
+        return '<g class="kg-node" data-id="'+idSafe+'" transform="translate('+p.x+','+p.y+')">' +
+          '<circle r="16" fill="'+col+'" opacity="0.95"/>' +
+          '<text text-anchor="middle" y="5" font-size="13">'+emo+'</text>' +
+          '<text text-anchor="middle" y="32" fill="#cbd5e1" font-size="9" font-family="system-ui">'+esc(lab)+'</text></g>';
+      }}).join('');
+      container.innerHTML =
+        '<svg id="kg-svg" width="100%" height="'+H+'" viewBox="0 0 '+W+' '+H+
+        '" style="display:block;background:#1e293b">' +
+        '<rect width="100%" height="100%" fill="#1e293b" id="kg-svg-bg"/>' +
+        edgesSvg + nodesSvg +
+        '<text x="12" y="20" fill="#86efac" font-size="11" font-family="system-ui">Picture map · '+
+        nodesArr.length+' boxes · click any icon</text></svg>';
+      container.querySelectorAll('.kg-node').forEach(function(g) {{
+        g.addEventListener('click', function(ev) {{
+          ev.stopPropagation();
+          window.kgShowNode(g.getAttribute('data-id'));
+        }});
+      }});
+      const bg = container.querySelector('#kg-svg-bg');
+      if (bg) bg.addEventListener('click', function() {{ window.kgShowNode('__center__'); }});
+      network = null;
+    }}
+
     function rebuild() {{
       const allowed = new Set(Array.from(document.querySelectorAll('.kg-type:checked')).map(c => c.value));
       const nodesArr = (GRAPH.nodes || []).filter(n => allowed.has(n.type || 'unknown')).map(n => ({{
-        id: n.id, label: n.label || n.id, title: (n.path || n.id) + ' (' + (n.type||'') + ') — click for Guru',
-        color: COLORS[n.type] || COLORS.unknown, shape: n.type === 'project' ? 'box' : 'dot'
+        id: n.id, label: n.label || n.id, title: (n.path || n.id) + ' (' + (n.type||'') + ')',
+        color: COLORS[n.type] || COLORS.unknown, shape: n.type === 'project' ? 'box' : 'dot',
+        type: n.type || 'unknown',
+        emoji: n.icon_emoji || '❓',
+        icon: n.icon || n.type || 'unknown',
+        iconUri: n.icon_data_uri || ''
       }}));
       const idset = new Set(nodesArr.map(n => n.id));
       const edgesArr = (GRAPH.edges || []).filter(e => idset.has(e.source) && idset.has(e.target)).map((e,i) => ({{
         id: i, from: e.source, to: e.target, arrows: 'to', color: {{ color:'#475569' }}
       }}));
 
-      // Offline-friendly clickable list (always works)
+      // Node list ALWAYS works (offline) — icons first for vibe coders
       const list = document.getElementById('kg-nodelist');
-      list.innerHTML = '<div style="font-size:12px;color:#94a3b8;margin-bottom:6px;">Nodes (click if graph canvas is blocked)</div>' +
-        nodesArr.map(n => '<button type="button" style="display:block;width:100%;text-align:left;margin:3px 0;padding:6px 8px;background:#0f172a;border:1px solid #334155;border-radius:6px;color:#e2e8f0;cursor:pointer;" onclick="window.kgShowNode(\\''+n.id.replace(/'/g, '')+'\\')">'+
-          '<span style="color:'+(COLORS[n.color]||'#94a3b8')+'">●</span> '+n.label+' <span style="color:#64748b;font-size:11px;">'+n.id+'</span></button>').join('');
+      list.innerHTML = '<div style="font-size:12px;color:#86efac;margin-bottom:6px;">All boxes ('+nodesArr.length+') — click the picture</div>' +
+        nodesArr.map(n => {{
+          const ico = n.iconUri
+            ? '<img src="'+n.iconUri+'" width="18" height="18" alt="" style="vertical-align:middle;margin-right:6px"/>'
+            : '<span style="margin-right:6px">'+n.emoji+'</span>';
+          return '<button type="button" style="display:flex;align-items:center;width:100%;text-align:left;margin:3px 0;padding:8px;background:#0f172a;border:1px solid #334155;border-radius:6px;color:#e2e8f0;cursor:pointer;" onclick="window.kgShowNode(\\''+String(n.id).replace(/'/g, '')+'\\')">'+
+            ico+' <span><strong>'+esc(n.label)+'</strong> <span style="color:#64748b;font-size:11px;">'+esc(n.type)+' · '+esc(n.icon)+'</span></span></button>';
+        }}).join('');
 
       const container = document.getElementById('kg-canvas');
-      if (typeof vis === 'undefined') {{
-        container.innerHTML = '<p style="padding:24px;color:#f59e0b;">vis-network CDN unavailable — use the node list below. Briefings still work.</p>';
-        network = null;
-        return;
-      }}
-      const data = {{ nodes: new vis.DataSet(nodesArr), edges: new vis.DataSet(edgesArr) }};
-      network = new vis.Network(container, data, {{
-        physics: {{ stabilization: true, barnesHut: {{ gravitationalConstant: -12000 }} }},
-        interaction: {{ hover: true, tooltipDelay: 80, multiselect: false }},
-        nodes: {{ font: {{ color: '#e2e8f0', size: 12 }} }}
-      }});
-      network.on('click', function(params) {{
-        if (params.nodes && params.nodes.length) {{
-          window.kgShowNode(params.nodes[0]);
-        }} else {{
-          // empty canvas / center
-          window.kgShowNode('__center__');
+      // Prefer offline SVG so hard-refresh / no-CDN never looks "empty"
+      drawOfflineSvg(nodesArr, edgesArr);
+      // Optional: upgrade to vis-network if CDN already loaded
+      if (typeof vis !== 'undefined') {{
+        try {{
+          const data = {{ nodes: new vis.DataSet(nodesArr), edges: new vis.DataSet(edgesArr) }};
+          network = new vis.Network(container, data, {{
+            physics: {{ stabilization: true, barnesHut: {{ gravitationalConstant: -12000 }} }},
+            interaction: {{ hover: true, tooltipDelay: 80, multiselect: false }},
+            nodes: {{ font: {{ color: '#e2e8f0', size: 12 }} }}
+          }});
+          network.on('click', function(params) {{
+            if (params.nodes && params.nodes.length) window.kgShowNode(params.nodes[0]);
+            else window.kgShowNode('__center__');
+          }});
+        }} catch (err) {{
+          drawOfflineSvg(nodesArr, edgesArr);
         }}
-      }});
+      }}
     }}
     document.querySelectorAll('.kg-type').forEach(c => c.addEventListener('change', rebuild));
-    rebuild();
-    window.kgShowNode('__center__');
+    try {{
+      rebuild();
+      window.kgShowNode('__center__');
+    }} catch (err) {{
+      document.getElementById('kg-panel').innerHTML =
+        '<p style="color:#f59e0b;">Graph UI error (data still in page JSON): '+esc(String(err))+'</p>'+
+        '<p style="color:#94a3b8;font-size:13px;">Use project chips above — they do not need the canvas.</p>';
+    }}
   }})();
   </script>
 """
@@ -2324,7 +2614,9 @@ def render_html(
   <button class="download" onclick="window.print()">🖨 Print / Save PDF</button>
   <button class="download" id="refreshBtn" onclick="refreshDashboard()" style="background: #10b981;">🔄 Refresh</button>
   <a class="download" href="#knowledge-graph" style="background:#8b5cf6;text-decoration:none;">🕸 Knowledge graph</a>
-  <a class="download" href="#costs" style="background:#0ea5e9;text-decoration:none;">💰 Costs</a>
+  <a class="download" href="#cost-method" style="background:#0ea5e9;text-decoration:none;">📐 Cost method</a>
+  <a class="download" href="#cost-compare" style="background:#f59e0b;text-decoration:none;">⚖️ Compare</a>
+  <a class="download" href="#costs" style="background:#0284c7;text-decoration:none;">💰 Raven meters</a>
   <label style="display: inline-block; margin-left: 16px; color: #cbd5e1; cursor: pointer; font-size: 14px;">
     <input type="checkbox" id="autoRefresh" onchange="toggleAutoRefresh()" style="cursor: pointer; margin-right: 6px;">
     Auto-refresh every 30s
@@ -2474,11 +2766,15 @@ def render_html(
     </p>
   </div>
 
-  <h2 id="costs">📊 Headline numbers — every value cited</h2>
+  {render_cost_compare_section(metrics, metadata)}
+
+  <h2 id="costs">📊 Headline numbers — Raven-metered only (every value cited)</h2>
   <p style="color:#94a3b8;font-size:13px;margin-bottom:12px;">
-    Click a blue <span class="cite">[C#]</span> to jump to the bibliography. Window
+    These figures are <strong>Raven-metered</strong> (token × model rate card), not invoices.
+    Click a blue <span class="cite">[C#]</span> for bibliography. Window
     <strong>{metrics['window_start']}</strong> → <strong>{metrics['window_end']}</strong>
     ({metrics['window_days']}d). Sub-cent costs never round to $0.00.
+    For Claude/Console money, use the <a href="#cost-compare" style="color:#38bdf8;">side-by-side compare</a> above.
   </p>
 
   <div class="stat-grid">
@@ -2680,7 +2976,7 @@ def render_html(
 
   <div class="footer">
     Generated by Raven v{metadata['plugin_version']} · Local-only · No telemetry ·
-    build kg-v2-grounded+cite · agent memory = RavenVault {cite_chip("C5")}
+    build kg-v2-grounded+cite · agent memory = RavenVault
   </div>
 </div>
 
@@ -2721,19 +3017,19 @@ function downloadCSV() {{
 function refreshDashboard() {{
   const status = document.getElementById('refreshStatus');
   status.style.display = 'inline';
+  status.style.color = '#94a3b8';
   status.textContent = '🔄 Refreshing...';
 
-  // Try local server first
+  // Prefer local dashboard-server (regenerates HTML). file:// cannot rebuild itself.
   fetch('http://127.0.0.1:9787/refresh')
     .then(r => r.json())
     .then(data => {{
-      status.textContent = '✅ Refreshed at ' + new Date().toLocaleTimeString();
-      setTimeout(() => {{ status.style.display = 'none'; }}, 3000);
-      location.reload();
+      status.textContent = '✅ Regenerated — reloading…';
+      setTimeout(() => {{ location.reload(); }}, 400);
     }})
     .catch(err => {{
-      status.textContent = '⚠️  Local server not running. Start with: raven dashboard --serve';
-      status.style.color = '#f59e0b';
+      status.style.color = '#fbbf24';
+      status.textContent = 'Hard refresh only reloads this file. Rebuild: python3 scripts/dashboard.py --html --open';
     }});
 }}
 
@@ -2930,13 +3226,50 @@ def main():
     parser.add_argument("--days", type=int, default=30, help="Window in days (default 30)")
     parser.add_argument("--month", type=str, help="Specific month YYYY-MM")
     parser.add_argument("--project", type=str, help="Filter by project name")
-    args = parser.parse_args()
+    # Enterprise Stop hook: dashboard.py --html --current-project
+    parser.add_argument(
+        "--current-project",
+        action="store_true",
+        help="Filter to the current repo (cwd/git/manifest). Used by global Stop hooks.",
+    )
+    # parse_known_args: never exit 2 on unknown legacy flags from older plugins
+    args, unknown = parser.parse_known_args()
+    if unknown:
+        print(f"dashboard: ignoring unknown args {unknown}", file=sys.stderr)
 
     if not (
         args.cli or args.obsidian or args.html or args.json or args.all
         or args.audit or args.graph_only or args.graph_json
     ):
-        args.cli = True  # default
+        # Hook default: if only --current-project, still build HTML
+        if args.current_project:
+            args.html = True
+        else:
+            args.cli = True  # default
+
+    # Resolve project filter
+    project_filter = args.project
+    if args.current_project and not project_filter:
+        project_filter = (
+            (collect_metadata() or {}).get("project")
+            or Path.cwd().name
+        )
+        try:
+            remote = subprocess.check_output(
+                ["git", "remote", "get-url", "origin"],
+                stderr=subprocess.DEVNULL,
+                text=True,
+            ).strip()
+            if remote:
+                project_filter = remote.rstrip("/").split("/")[-1].replace(".git", "")
+        except Exception:
+            pass
+        # Prefer manifest if present
+        if MANIFEST.exists():
+            try:
+                project_filter = json.loads(MANIFEST.read_text()).get("project") or project_filter
+            except Exception:
+                pass
 
     days = args.days
     if args.month:
@@ -2945,11 +3278,15 @@ def main():
             days = 31  # rough — aggregator filters by date anyway
         except Exception:
             print(f"Invalid --month format. Use YYYY-MM. Got: {args.month}", file=sys.stderr)
-            sys.exit(1)
+            days = 30  # fail-soft for hooks (do not exit 2)
 
     graph = None
     if args.html or args.all or args.graph_only or args.graph_json:
-        graph = _load_or_build_graph(project_filter=args.project, session_days=days)
+        try:
+            graph = _load_or_build_graph(project_filter=project_filter, session_days=days)
+        except Exception as e:
+            print(f"dashboard: graph build failed (continuing): {e}", file=sys.stderr)
+            graph = {"nodes": [], "edges": []}
         if args.graph_json and not (args.html or args.graph_only or args.all):
             print(
                 f"🕸 knowledge-graph.json: {VAULT / 'graph' / 'knowledge-graph.json'} "
@@ -2959,7 +3296,7 @@ def main():
             return
 
     metadata = collect_metadata()
-    metrics = aggregate(days=days, project_filter=args.project)
+    metrics = aggregate(days=days, project_filter=project_filter)
     recs = recommend(metrics, metadata)
 
     # Drift audit — runs independently or alongside other modes
@@ -2982,10 +3319,33 @@ def main():
 
     if args.html or args.all:
         VAULT.mkdir(parents=True, exist_ok=True)
-        VAULT_DASHBOARD_HTML.write_text(
-            render_html(metrics, metadata, recs, graph=graph)
+        html_out = render_html(metrics, metadata, recs, graph=graph)
+        # Atomic write — single dashboard.html (tokenomics + knowledge graph)
+        tmp = VAULT_DASHBOARD_HTML.with_suffix(".html.tmp")
+        tmp.write_text(html_out)
+        tmp.replace(VAULT_DASHBOARD_HTML)
+        # Remove legacy dual-file names (never delete dashboard.html itself)
+        for legacy_name in ("dashboard-kg.html", "OPEN-GRAPH.html"):
+            lp = VAULT / legacy_name
+            try:
+                if lp.is_file():
+                    lp.unlink()
+            except OSError:
+                pass
+        stamp = {
+            "build": "kg-v2-grounded+cite",
+            "generated_at": metadata.get("report_generated_at_local"),
+            "path": str(VAULT_DASHBOARD_HTML),
+            "bytes": len(html_out),
+            "graph_nodes": len((graph or {}).get("nodes") or []),
+            "graph_edges": len((graph or {}).get("edges") or []),
+        }
+        (VAULT / "dashboard-stamp.json").write_text(json.dumps(stamp, indent=2) + "\n")
+        print(
+            f"🌐 HTML dashboard: {VAULT_DASHBOARD_HTML} ({len(html_out)} bytes, "
+            f"nodes={stamp['graph_nodes']})",
+            file=sys.stderr,
         )
-        print(f"🌐 HTML dashboard: {VAULT_DASHBOARD_HTML}", file=sys.stderr)
         if args.open:
             try:
                 subprocess.run(["open", str(VAULT_DASHBOARD_HTML)], check=False)
@@ -3010,7 +3370,7 @@ def main():
   a {{ color:#38bdf8; }}
 </style></head><body>
 <h1>🪶 Raven Knowledge Graph</h1>
-<div class="meta">Project filter: {args.project or 'all'} · Vault: {VAULT}</div>
+<div class="meta">Project filter: {project_filter or 'all'} · Vault: {VAULT}</div>
 {render_knowledge_graph_section(graph or {{'nodes': [], 'edges': []}}, metrics=metrics, metadata=metadata)}
 </body></html>
 """
@@ -3033,4 +3393,14 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except SystemExit as e:
+        # Never block Claude Stop hooks (exit 2 from argparse was the failure mode)
+        code = e.code if isinstance(e.code, int) else 0
+        if code not in (0, None):
+            print(f"dashboard: coerced exit {code} → 0 (hook fail-soft)", file=sys.stderr)
+        sys.exit(0)
+    except Exception as e:
+        print(f"dashboard: fail-soft error: {e}", file=sys.stderr)
+        sys.exit(0)

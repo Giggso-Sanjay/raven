@@ -76,11 +76,30 @@ def ensure_concept(slug: str, project: str, evidence: str) -> bool:
             return True
         except OSError:
             return False
+    # pick a simple icon key from slug keywords (login/db/security/…)
+    icon = "concept"
+    low = slug.lower()
+    for key, words in (
+        ("login", ("login", "auth")),
+        ("security", ("secur", "guard", "vault", "secret")),
+        ("database", ("db", "database", "sql", "postgres", "oracle")),
+        ("api", ("api", "endpoint", "router")),
+        ("ui", ("ui", "dashboard", "report", "screen")),
+        ("money", ("pay", "card", "billing", "money")),
+        ("cloud", ("cloud", "deploy", "aws", "oci")),
+        ("workflow", ("workflow", "pipeline", "stream")),
+        ("code", ("code", "hook", "script")),
+        ("data", ("data", "metric", "token")),
+    ):
+        if any(w in low for w in words):
+            icon = key
+            break
     path.write_text(
         f"""---
 type: concept
 name: {slug}
 project: {project}
+icon: {icon}
 updated: {now}
 tags: [concept, raven]
 ---

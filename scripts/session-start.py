@@ -461,34 +461,21 @@ def format_context(project: dict, providers: list[dict], routing: dict, model_en
         sessions_dir = Path.home() / "RavenVault" / "sessions"
         n_sessions = len(list(sessions_dir.glob("*.md"))) if sessions_dir.exists() else 0
         if n_sessions:
-            lines.append(f"   💾  Memory: {n_sessions} prior session note(s) available for carry-forward")
+            lines.append(f"   💾  Memory: {n_sessions} RavenVault session note(s) — digest loaded below (hub + open questions)")
         else:
-            lines.append("   💾  Memory: will start logging session notes to ~/RavenVault/")
-        # dashboard status
-        dashboard_path = Path.home() / "RavenVault" / "dashboard.html"
-        if dashboard_path.exists():
-            try:
-                # Try to read last 30 days metrics
-                metrics_dir = Path.home() / "RavenVault" / ".metrics"
-                total_sessions = 0
-                total_tokens = 0
-                total_cost = 0
-                if metrics_dir.exists():
-                    for mf in sorted(metrics_dir.glob("*.json"))[-1:]:  # Last month file
-                        try:
-                            m = json.loads(mf.read_text())
-                            total_sessions = m.get("sessions", 0)
-                            total_tokens = m.get("total", {}).get("tokens", 0)
-                            total_cost = m.get("total", {}).get("cost_usd", 0)
-                        except:
-                            pass
-                if total_sessions > 0:
-                    lines.append(f"   📊  Dashboard: {total_sessions} sessions · {total_tokens:,} tok · ${total_cost:.2f}")
-                    lines.append(f"       View: open ~/RavenVault/dashboard.html or run `raven dashboard`")
-                else:
-                    lines.append(f"   📊  Dashboard: ready at ~/RavenVault/dashboard.html")
-            except:
-                pass
+            lines.append("   💾  Memory: RavenVault empty for this project — first session will create hub + notes")
+        lines.append("   📂  Vault: ~/RavenVault (sessions · projects · concepts · decisions)")
+        try:
+            _sd = Path(__file__).resolve().parent
+            if str(_sd) not in sys.path:
+                sys.path.insert(0, str(_sd))
+            from vault_common import dashboard_link_lines  # noqa: E402
+
+            for _ln in dashboard_link_lines(when="always visible"):
+                lines.append("   " + _ln if not _ln.startswith("📊") else "   " + _ln)
+        except Exception:
+            lines.append("   📊  Dashboard: ~/RavenVault/dashboard.html")
+            lines.append("       open file:///Users/$USER/RavenVault/dashboard.html")
         lines.append("   (Nothing here is silent — guards announce themselves when they fire.)")
     except Exception:
         pass  # transparency banner is best-effort, never blocks session start
@@ -614,6 +601,20 @@ def main():
     # 6. Format context string
     context = format_context(project, all_providers, routing, model_env_written, domain_skill)
 
+    # 6a. Dashboard link ALWAYS first (human-visible map of memory + costs)
+    try:
+        _script_dir = Path(__file__).resolve().parent
+        if str(_script_dir) not in sys.path:
+            sys.path.insert(0, str(_script_dir))
+        from vault_common import dashboard_link_lines, dashboard_link_oneline  # noqa: E402
+
+        _dash_block = "\n".join(dashboard_link_lines(when="session start"))
+        context = _dash_block + "\n\n" + context
+        _dash_one = dashboard_link_oneline(when="session start")
+    except Exception:
+        _dash_one = "📊 Dashboard: ~/RavenVault/dashboard.html"
+        context = _dash_one + "\n\n" + context
+
     # 6b. RavenVault curated digest (hub + open questions + last sessions)
     try:
         import subprocess as _sp
@@ -652,7 +653,10 @@ def main():
     if cloud_p:
         providers_short += " · " + ", ".join(p["provider"] for p in cloud_p)
 
-    system_message = f"Raven ✅  {badge_short}{stack_line}{skill_line}{providers_short}"
+    system_message = (
+        f"Raven ✅  {badge_short}{stack_line}{skill_line}{providers_short}\n"
+        f"{_dash_one}"
+    )
 
     # 7. Output JSON for SessionStart hook
     output = {

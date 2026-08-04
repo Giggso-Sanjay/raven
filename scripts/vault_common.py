@@ -17,6 +17,55 @@ DECISIONS = VAULT / "decisions"
 GRAPH_DIR = VAULT / "graph"
 INDEX = VAULT / "index" / "README.md"
 RAW_SESSIONS = VAULT / "sessions" / "raw"
+DASHBOARD_HTML = VAULT / "dashboard.html"
+
+
+def dashboard_path() -> pathlib.Path:
+    """Canonical human dashboard (tokenomics + knowledge graph)."""
+    return DASHBOARD_HTML
+
+
+def dashboard_uri() -> str:
+    """file:// URI for opening in a browser."""
+    p = dashboard_path()
+    try:
+        if p.exists():
+            return p.resolve().as_uri()
+        return p.expanduser().absolute().as_uri()
+    except Exception:
+        return f"file://{p}"
+
+
+def dashboard_link_lines(prefix: str = "📊", when: str = "") -> list[str]:
+    """Short lines every Raven surface should show (session start / end / PR).
+
+    Always points at ~/RavenVault/dashboard.html — rebuild with:
+      python3 scripts/dashboard.py --html --open
+    """
+    path = dashboard_path()
+    uri = dashboard_uri()
+    when_bit = f" ({when})" if when else ""
+    exists = path.exists()
+    lines = [
+        f"{prefix} Raven dashboard{when_bit}:",
+        f"   {path}",
+        f"   Open: {uri}",
+    ]
+    if not exists:
+        lines.append(
+            "   (not built yet — run: python3 scripts/dashboard.py --html --open)"
+        )
+    else:
+        lines.append(
+            "   Rebuild anytime: python3 scripts/dashboard.py --html --open"
+        )
+    return lines
+
+
+def dashboard_link_oneline(when: str = "") -> str:
+    """Single-line toaster-friendly dashboard pointer."""
+    when_bit = f" · {when}" if when else ""
+    return f"📊 Dashboard{when_bit}: {dashboard_path()}  ·  open {dashboard_uri()}"
 
 
 def run(cmd: list, **kw) -> str:

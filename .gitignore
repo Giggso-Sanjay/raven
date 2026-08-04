@@ -30,3 +30,7 @@ docs/APPLY-PROMPT-vault-graph-memory.md
 __pycache__/
 *.pyc
 .env
+.raven/.cache/
+.raven/state/
+.raven/.model-session.json
+scripts/.raven/

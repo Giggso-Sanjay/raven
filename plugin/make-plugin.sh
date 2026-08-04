@@ -71,6 +71,7 @@ for script in \
     vault-load.py \
     knowledge-extract.py \
     knowledge_graph.py \
+    kg_icons.py \
     dashboard.py \
     cve-prompt-guard.py \
     cve-check.py \
@@ -102,6 +103,19 @@ echo "  ✅ settings.json (hook wiring)"
 cp "$REPO_DIR/.model.env.template" "$TMP_DIR/.model.env.template" 2>/dev/null && echo "  ✅ .model.env.template"
 cp "$REPO_DIR/scripts/model-pricing.json" "$TMP_DIR/scripts/model-pricing.json" 2>/dev/null && echo "  ✅ scripts/model-pricing.json"
 cp "$REPO_DIR/templates/routing-policy.example.json" "$TMP_DIR/routing-policy.example.json" 2>/dev/null && echo "  ✅ routing-policy.example.json"
+
+# ── KG icons (vibe-coder picture map; offline SVG) ──
+if [[ -d "$REPO_DIR/assets/kg-icons" ]]; then
+    mkdir -p "$TMP_DIR/assets/kg-icons"
+    cp "$REPO_DIR/assets/kg-icons/"*.svg "$TMP_DIR/assets/kg-icons/" 2>/dev/null || true
+    echo "  ✅ assets/kg-icons (knowledge graph icons)"
+fi
+# kg_icons.py lives with scripts (copied in loop if listed)
+if [[ -f "$REPO_DIR/scripts/kg_icons.py" ]]; then
+    cp "$REPO_DIR/scripts/kg_icons.py" "$TMP_DIR/scripts/kg_icons.py"
+    chmod +x "$TMP_DIR/scripts/kg_icons.py"
+    echo "  ✅ scripts/kg_icons.py"
+fi
 
 # ── Pre-flight validation ──
 echo ""

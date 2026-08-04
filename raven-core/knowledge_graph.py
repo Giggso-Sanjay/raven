@@ -63,8 +63,23 @@ def build_graph(project_filter: str | None = None, session_days: int | None = 30
     nodes: dict[str, dict] = {}
     edges: list[dict] = []
 
-    def add_node(nid: str, ntype: str, path: str, label: str | None = None, tags=None):
+    def add_node(
+        nid: str,
+        ntype: str,
+        path: str,
+        label: str | None = None,
+        tags=None,
+        icon: str | None = None,
+    ):
         if nid in nodes:
+            # upgrade unknown stubs if we learn a better type/icon later
+            existing = nodes[nid]
+            if existing.get("type") in (None, "unknown") and ntype and ntype != "unknown":
+                existing["type"] = ntype
+            if icon and not existing.get("icon"):
+                existing["icon"] = icon
+            if label and existing.get("label") == nid.split("/")[-1]:
+                existing["label"] = label
             return
         nodes[nid] = {
             "id": nid,
@@ -72,6 +87,7 @@ def build_graph(project_filter: str | None = None, session_days: int | None = 30
             "type": ntype,
             "path": path,
             "tags": tags or [ntype],
+            "icon": icon,
         }
 
     for ntype, folder in TYPE_DIRS.items():
@@ -107,6 +123,7 @@ def build_graph(project_filter: str | None = None, session_days: int | None = 30
                 (str(path.relative_to(VAULT)) if str(path).startswith(str(VAULT)) else str(path)),
                 label=meta.get("name") or meta.get("title") or path.stem,
                 tags=tags or [ntype_final],
+                icon=meta.get("icon"),
             )
             for link in extract_wikilinks(text):
                 target = _node_id(link)
@@ -139,11 +156,24 @@ def build_graph(project_filter: str | None = None, session_days: int | None = 30
                             {"source": rel_id, "target": t, "rel": "related"}
                         )
 
+    # Attach vibe-coder icons (data-URI + emoji) for dashboard / exporters
+    try:
+        from kg_icons import enrich_node  # type: ignore
+    except ImportError:
+        try:
+            from scripts.kg_icons import enrich_node  # type: ignore
+        except ImportError:
+            enrich_node = None  # type: ignore
+
+    node_list = list(nodes.values())
+    if enrich_node:
+        node_list = [enrich_node(n) for n in node_list]
+
     return {
         "generated_at": datetime.datetime.now(datetime.timezone.utc).isoformat(),
         "project_filter": project_filter,
         "session_days": session_days,
-        "nodes": list(nodes.values()),
+        "nodes": node_list,
         "edges": edges,
     }
 

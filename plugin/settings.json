@@ -97,6 +97,11 @@
             "type": "command",
             "command": "python3 \"${CLAUDE_PROJECT_DIR:-.}/.claude/scripts/knowledge-extract.py\" --quiet 2>/dev/null || python3 \"${CLAUDE_PROJECT_DIR:-.}/scripts/knowledge-extract.py\" --quiet 2>/dev/null || true",
             "async": true
+          },
+          {
+            "type": "command",
+            "command": "python3 \"${CLAUDE_PROJECT_DIR:-.}/.claude/scripts/session-gate.py\" 2>/dev/null || python3 \"${CLAUDE_PROJECT_DIR:-.}/scripts/session-gate.py\" 2>/dev/null || true",
+            "async": true
           }
         ]
       }
