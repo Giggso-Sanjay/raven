@@ -614,7 +614,25 @@ def main():
     # 6. Format context string
     context = format_context(project, all_providers, routing, model_env_written, domain_skill)
 
-    # 6. Build compact system notification (always shown in Claude Code UI)
+    # 6b. RavenVault curated digest (hub + open questions + last sessions)
+    try:
+        import subprocess as _sp
+        _vl = Path(__file__).resolve().parent / "vault-load.py"
+        if not _vl.exists():
+            _vl = Path(__file__).resolve().parent.parent / "scripts" / "vault-load.py"
+        if _vl.exists():
+            _r = _sp.run(
+                [sys.executable, str(_vl)],
+                capture_output=True,
+                text=True,
+                timeout=5,
+            )
+            if _r.returncode == 0 and _r.stdout.strip():
+                context = context + "\n\n" + _r.stdout.strip()
+    except Exception:
+        pass  # vault-load is best-effort — never block session start
+
+    # 6c. Build compact system notification (always shown in Claude Code UI)
     badge_short = "BROWNFIELD" if project["type"] == "brownfield" else "GREENFIELD"
     skill, domain_label, strength = domain_skill
     if skill and strength == "strong":

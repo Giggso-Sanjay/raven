@@ -8,7 +8,9 @@
 
 How, in simple terms:
 
-- **Strategic Thinking** — before Raven lets the AI touch your code, it makes a plan, attacks that plan from three angles (business, technical, data — plus a critic), and waits for your go. Bugs aren't guessed at: a 2-round triage finds the root cause first.
+- **Strategic Thinking** — done by two orchestrators, picked automatically based on what you're doing:
+  - **Andie** — for new work and decisions (new repo, new feature, "should we use X or Y?"). Makes a plan, attacks it from three angles (business, technical, data — plus a critic), and waits for your go before touching code.
+  - **Andie-Jr** — for bugs in existing code ("why is auth failing?"). Skips the planning ceremony and runs a fast 2-round triage straight to root cause → fix, so brownfield debugging isn't slowed down by process it doesn't need.
 - **Scalable Structure** — every prompt is routed to the right expert automatically. 61 specialists, one per domain, picked by deterministic rules — and you always see a one-line note saying who's handling it and why. Works the same on one repo or a hundred.
 - **Security at Source** — guards run on your machine, at the moment code is written and committed: secrets are blocked, vulnerable libraries are blocked, and edits are blocked until the thinking actually happened. Not a report after the damage — a gate before it.
 
@@ -40,6 +42,10 @@ bash <(curl -fsSL https://raw.githubusercontent.com/giggsoinc/raven/main/install
 cd your-project && raven-setup                                                         # once per project
 ```
 
+Two files come out of this setup, in plain terms:
+- **`.raven/manifest.json`** — your project's config card: what language/stack you use, solo or team mode, which guard rules are on. Andie and the guards read this before doing anything, so they act like a Postgres expert on a Postgres project instead of guessing.
+- **`.raven/manifest.secrets.json`** — only needed if you want commit/block email or Slack alerts. It holds those notification credentials, is gitignored by default, and everything works fine without it (Raven just skips notifications silently).
+
 ### New repo (greenfield)
 
 `raven-setup` finds no file signatures in an empty directory, so it asks 1–3 quick questions (mode: solo/team/enterprise, primary language, cloud provider) and builds `.raven/manifest.json` entirely from your answers. Start working normally — Andie routes every prompt and guards activate as soon as files exist.
@@ -47,6 +53,8 @@ cd your-project && raven-setup                                                  
 ### Existing repo (brownfield)
 
 `raven-setup` runs a detector that auto-classifies the work type (code / infra / data / docs / salesforce / odoo / mixed) from file signatures already in your repo. **Known limitation:** that only sets the work-mode label — it does not read `package.json`/`requirements.txt`/etc. to auto-fill the manifest's stack fields, so you'll still be asked to manually pick languages, databases, and cloud provider even though that info is already in the repo. If `.raven/manifest.json` already exists, setup skips straight to "already configured."
+
+This is also where **Andie-Jr** earns its keep: once the manifest is in place, any bug report on this existing codebase gets a 2-round root-cause triage instead of an open-ended investigation — faster than either a from-scratch plan (Andie) or no structure at all (plain Claude).
 
 ## Quick start
 

@@ -16,6 +16,7 @@ codex/.raven/
 local/
 *.md.env
 *.local.md
+docs/APPLY-PROMPT-vault-graph-memory.md
 
 # Raven secrets — NEVER commit
 .raven/manifest.secrets.json

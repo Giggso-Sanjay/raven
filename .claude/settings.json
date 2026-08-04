@@ -1,12 +1,59 @@
 {
   "version": "1.0",
-  "description": "Raven v3.0 — Automated governance gate via Andie",
+  "description": "Raven v3.0 \u2014 Automated governance gate via Andie",
   "hooks": {
-    "UserPromptSubmit": "andie --auto --mode=detect"
+    "UserPromptSubmit": "andie --auto --mode=detect",
+    "SessionStart": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"${CLAUDE_PROJECT_DIR:-.}/.claude/scripts/vault-load.py\" --hook 2>/dev/null || python3 \"${CLAUDE_PROJECT_DIR:-.}/scripts/vault-load.py\" --hook 2>/dev/null || true",
+            "timeout": 5,
+            "async": false
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"${CLAUDE_PROJECT_DIR:-.}/.claude/scripts/token-meter-write.py\" 2>/dev/null || python3 \"${CLAUDE_PROJECT_DIR:-.}/scripts/token-meter-write.py\" 2>/dev/null || true",
+            "async": true
+          },
+          {
+            "type": "command",
+            "command": "python3 \"${CLAUDE_PROJECT_DIR:-.}/.claude/scripts/token-guard.py\" 2>/dev/null || true",
+            "async": true
+          },
+          {
+            "type": "command",
+            "command": "python3 \"${CLAUDE_PROJECT_DIR:-.}/.claude/scripts/obsidian-log.py\" 2>/dev/null || python3 \"${CLAUDE_PROJECT_DIR:-.}/scripts/obsidian-log.py\" 2>/dev/null || true",
+            "async": true
+          },
+          {
+            "type": "command",
+            "command": "python3 \"${CLAUDE_PROJECT_DIR:-.}/.claude/scripts/knowledge-extract.py\" --quiet 2>/dev/null || python3 \"${CLAUDE_PROJECT_DIR:-.}/scripts/knowledge-extract.py\" --quiet 2>/dev/null || true",
+            "async": true
+          }
+        ]
+      }
+    ]
   },
   "permissions": {
-    "bash": ["git", "python3"],
-    "mcp": ["raven-core", "raven-review", "raven-security"]
+    "bash": [
+      "git",
+      "python3"
+    ],
+    "mcp": [
+      "raven-core",
+      "raven-review",
+      "raven-security"
+    ]
   },
   "governance": {
     "enforcement": "mandatory",

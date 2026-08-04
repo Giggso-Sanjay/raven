@@ -84,10 +84,10 @@ These are the **real Claude Code hooks** wired in this project. `PostEdit` and `
 
 | Hook Event | Fires When | Action |
 |---|---|---|
-| `SessionStart` | New Claude session opens | `session-start.py` — brownfield/greenfield detection, model routing, manifest check |
+| `SessionStart` | New Claude session opens | `session-start.py` — brownfield/greenfield, models, manifest; embeds `vault-load.py` digest · plus `vault-load.py --hook` |
 | `UserPromptSubmit` | Every user message arrives | `triage-router.py` → `architect-router.py` → `model-router.py` → `cve-prompt-guard.py` |
 | `PostToolUse` (matcher: `Write\|Edit\|MultiEdit`) | After any file write/edit | `secret-scan.py` + `db-guard.py` (async) |
-| `Stop` | Session ends | `token-guard.py` + `obsidian-log.py` |
+| `Stop` | Session ends | `token-guard.py` + `obsidian-log.py` (hub + trimmed session) + `knowledge-extract.py` (async) |
 
 **Git-level (NOT a Claude Code hook):**
 

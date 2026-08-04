@@ -17,7 +17,7 @@ set -e
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_DIR="$(dirname "$SCRIPT_DIR")"
-VERSION="4.1.0"
+VERSION="4.2.0"
 ZIP_NAME="raven-plugin-v${VERSION}.zip"
 ZIP_PATH="$SCRIPT_DIR/$ZIP_NAME"
 TMP_DIR="$(mktemp -d)"
@@ -67,6 +67,11 @@ for script in \
     model-router.py \
     token-guard.py \
     obsidian-log.py \
+    vault_common.py \
+    vault-load.py \
+    knowledge-extract.py \
+    knowledge_graph.py \
+    dashboard.py \
     cve-prompt-guard.py \
     cve-check.py \
     secret-scan.py \

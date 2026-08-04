@@ -8,6 +8,12 @@
             "type": "command",
             "command": "python3 \"${CLAUDE_PROJECT_DIR:-.}/.claude/scripts/session-start.py\"",
             "timeout": 10
+          },
+          {
+            "type": "command",
+            "command": "python3 \"${CLAUDE_PROJECT_DIR:-.}/.claude/scripts/vault-load.py\" --hook 2>/dev/null || python3 \"${CLAUDE_PROJECT_DIR:-.}/scripts/vault-load.py\" --hook 2>/dev/null || true",
+            "timeout": 5,
+            "async": false
           }
         ]
       }
@@ -74,12 +80,22 @@
         "hooks": [
           {
             "type": "command",
+            "command": "python3 \"${CLAUDE_PROJECT_DIR:-.}/.claude/scripts/token-meter-write.py\" 2>/dev/null || python3 \"${CLAUDE_PROJECT_DIR:-.}/scripts/token-meter-write.py\" 2>/dev/null || true",
+            "async": true
+          },
+          {
+            "type": "command",
             "command": "python3 \"${CLAUDE_PROJECT_DIR:-.}/.claude/scripts/token-guard.py\" 2>/dev/null || true",
             "async": true
           },
           {
             "type": "command",
             "command": "python3 \"${CLAUDE_PROJECT_DIR:-.}/.claude/scripts/obsidian-log.py\" 2>/dev/null || true",
+            "async": true
+          },
+          {
+            "type": "command",
+            "command": "python3 \"${CLAUDE_PROJECT_DIR:-.}/.claude/scripts/knowledge-extract.py\" --quiet 2>/dev/null || python3 \"${CLAUDE_PROJECT_DIR:-.}/scripts/knowledge-extract.py\" --quiet 2>/dev/null || true",
             "async": true
           }
         ]

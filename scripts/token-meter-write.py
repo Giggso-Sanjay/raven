@@ -183,8 +183,31 @@ def write_session_json(metrics: Dict[str, Any]) -> bool:
         return False
 
 
+def _resolve_project_name() -> str:
+    """Best-effort project name for per-repo metrics."""
+    try:
+        man = RAVEN_DIR / "manifest.json"
+        if man.exists():
+            name = json.loads(man.read_text()).get("project")
+            if name:
+                return str(name)
+    except Exception:
+        pass
+    try:
+        remote = subprocess.check_output(
+            ["git", "remote", "get-url", "origin"],
+            stderr=subprocess.DEVNULL,
+            text=True,
+        ).strip()
+        if remote:
+            return remote.rstrip("/").split("/")[-1].replace(".git", "")
+    except Exception:
+        pass
+    return pathlib.Path.cwd().name
+
+
 def write_monthly_rollup(metrics: Dict[str, Any]) -> bool:
-    """Append/merge into ~/RavenVault/.metrics/YYYY-MM.json."""
+    """Append/merge into ~/RavenVault/.metrics/YYYY-MM.json (per-project)."""
     try:
         VAULT_DIR.mkdir(parents=True, exist_ok=True)
         metrics_dir = VAULT_DIR / ".metrics"
@@ -193,37 +216,85 @@ def write_monthly_rollup(metrics: Dict[str, Any]) -> bool:
         # Extract YYYY-MM from timestamp
         ts = datetime.fromisoformat(metrics["timestamp"].replace("Z", "+00:00"))
         month_file = metrics_dir / f"{ts.strftime('%Y-%m')}.json"
+        project = metrics.get("project") or _resolve_project_name()
+        metrics["project"] = project
 
-        # Load existing or init
+        # Load existing or init — preserve list-shaped sessions if present
         if month_file.exists():
             try:
                 data = json.loads(month_file.read_text())
             except json.JSONDecodeError:
-                data = {"sessions": 0, "total": {}, "by_day": {}}
+                data = {}
         else:
-            data = {"sessions": 0, "total": {}, "by_day": {}}
+            data = {}
 
-        # Increment counts
-        data["sessions"] += 1
+        data.setdefault("month", ts.strftime("%Y-%m"))
+        data.setdefault("year_month", ts.strftime("%Y-%m"))
+        data.setdefault("by_day", {})
+        data.setdefault("by_project", {})
+        data.setdefault("total", {})
+
+        # sessions counter may be int or list — keep both shapes safe
+        if isinstance(data.get("sessions"), list):
+            pass
+        else:
+            data["sessions"] = int(data.get("sessions") or 0) + 1
+
         day_key = ts.strftime("%Y-%m-%d")
-        if day_key not in data["by_day"]:
+        tok = int(metrics.get("total", {}).get("tokens", 0) or 0)
+        cost = float(metrics.get("total", {}).get("cost_usd", 0) or 0)
+
+        # Unscoped by_day (legacy) + nested by_project
+        if day_key not in data["by_day"] or not isinstance(data["by_day"].get(day_key), dict):
             data["by_day"][day_key] = {
                 "sessions": 0,
                 "tokens": 0,
-                "cost_usd": 0,
+                "cost_usd": 0.0,
+                "by_project": {},
             }
-
-        data["by_day"][day_key]["sessions"] += 1
-        data["by_day"][day_key]["tokens"] += metrics["total"].get("tokens", 0)
-        data["by_day"][day_key]["cost_usd"] += metrics["total"].get("cost_usd", 0)
-
-        # Update monthly totals
-        data["total"]["tokens"] = data["total"].get("tokens", 0) + metrics["total"].get(
-            "tokens", 0
+        day = data["by_day"][day_key]
+        day.setdefault("by_project", {})
+        day["sessions"] = int(day.get("sessions") or 0) + 1
+        day["tokens"] = int(day.get("tokens") or 0) + tok
+        day["cost_usd"] = float(day.get("cost_usd") or 0) + cost
+        pb = day["by_project"].setdefault(
+            project, {"sessions": 0, "tokens": 0, "cost_usd": 0.0}
         )
-        data["total"]["cost_usd"] = data["total"].get("cost_usd", 0) + metrics[
-            "total"
-        ].get("cost_usd", 0)
+        pb["sessions"] += 1
+        pb["tokens"] += tok
+        pb["cost_usd"] += cost
+
+        # Top-level by_project with by_day
+        prow = data["by_project"].setdefault(
+            project,
+            {"sessions": 0, "tokens": 0, "cost_usd": 0.0, "by_day": {}},
+        )
+        prow["sessions"] = int(prow.get("sessions") or 0) + 1
+        prow["tokens"] = int(prow.get("tokens") or 0) + tok
+        prow["cost_usd"] = float(prow.get("cost_usd") or 0) + cost
+        prow.setdefault("by_day", {})
+        pd = prow["by_day"].setdefault(
+            day_key, {"sessions": 0, "tokens": 0, "cost_usd": 0.0}
+        )
+        pd["sessions"] += 1
+        pd["tokens"] += tok
+        pd["cost_usd"] += cost
+
+        # Also append a project-tagged row into sessions list if list-shaped
+        if isinstance(data.get("sessions"), list):
+            data["sessions"].append(
+                {
+                    "date": day_key,
+                    "started_at": metrics.get("timestamp"),
+                    "project": project,
+                    "sessions": 1,
+                    "tokens": tok,
+                    "cost_usd": cost,
+                }
+            )
+
+        data["total"]["tokens"] = int(data["total"].get("tokens") or 0) + tok
+        data["total"]["cost_usd"] = float(data["total"].get("cost_usd") or 0) + cost
 
         month_file.write_text(json.dumps(data, indent=2))
         return True
@@ -273,6 +344,7 @@ def main() -> None:
 
     # Parse transcript
     metrics = parse_transcript(transcript_path)
+    metrics["project"] = _resolve_project_name()
 
     # Write all three atomically
     write_session_json(metrics)

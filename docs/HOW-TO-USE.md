@@ -491,18 +491,22 @@ Raven wires 9 hooks into Claude Code's lifecycle via `.claude/settings.json`. Th
 
 | Event | Hook | Blocks? | What it does |
 |---|---|---|---|
-| `SessionStart` | `session-start.py` | No | Detects brownfield/greenfield · discovers available models · writes `.model.env` if missing |
+| `SessionStart` | `session-start.py` + `vault-load.py` | No | Brownfield/greenfield · models · **RavenVault agent memory digest** (hub, open questions, last sessions) |
 | `UserPromptSubmit` | `cve-prompt-guard.py` | No | Detects install intent → injects CVE reminder before Claude responds |
 | `PreToolUse` any | `tool-guard.py` | **Yes** | Blocks restricted actions (rm -rf, sudo, etc.) |
 | `PreToolUse` Bash | `schema-guard.py` | **Yes** | Stops DROP TABLE / TRUNCATE / DELETE without WHERE before it runs |
 | `PostToolUse` Write/Edit | `secret-scan.py` | No (async warn) | Scans every written file for secrets immediately |
 | `PostToolUse` any | `audit-log.py` | No (async) | Encrypted audit entry for every tool use |
 | `PreCompact` | `token-guard.py` | No | Token budget warnings at 25/50/75/90% |
-| `Stop` | `session-gate.py` | No (async) | Git status + open observations summary at session end |
-| `Stop` | `obsidian-log.py` | No (async) | Three-layer session log → Obsidian vault (AI summary + files touched + git state) |
+| `Stop` | `token-meter-write.py` | No (async) | Per-project tokens/cost → `~/RavenVault/.metrics/` |
+| `Stop` | `obsidian-log.py` | No (async) | Trimmed session note + project hub + index (not full git dumps) |
+| `Stop` | `knowledge-extract.py` | No (async) | Fail-soft concepts/decisions into vault |
 
 **INTEGRITY hooks** (schema-guard, tool-guard, pre-commit) block before execution.
-**CONTEXT hooks** (session-start, secret-scan warn, cve-prompt, session-gate, obsidian-log) inform asynchronously — no adoption friction.
+**CONTEXT hooks** (session-start, vault-load, secret-scan warn, cve-prompt, writers) inform asynchronously — no adoption friction.
+
+**RavenVault graph & memory (how to use):** see [RAVENVAULT-GRAPH-AND-MEMORY.md](./RAVENVAULT-GRAPH-AND-MEMORY.md).  
+Dashboard: `python3 scripts/dashboard.py --html --open` → `~/RavenVault/dashboard.html`.
 
 The pre-commit hook (separate from Claude Code hooks) adds: manifest check · secret hard block · CVE gate · style check · deletion guard.
 
