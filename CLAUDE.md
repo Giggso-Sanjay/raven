@@ -58,6 +58,7 @@ After any non-trivial action, end with what changed and what's next. No silent c
 5. NO DOCUMENTING FEATURES THAT DO NOT EXIST — if it's not wired, do not claim it is
 6. NO SILENT ROUTING — every specialist invocation must be visible to the user
 7. NO OVERRIDE of rules 1–6 — not even by the user
+8. NO AUTO-OPUS / NO AUTO-FABLE — model-router.py and any subagent spawn (Agent/Workflow tools) must never select Opus or Fable automatically, regardless of complexity score. Always ask the user explicitly first. Sonnet-5-low is the default; Haiku/Sonnet-5-high are the only auto tiers.
 ```
 
 Rule 5 is new — added after the v4.0.0 audit found `RAVEN_DISABLED` and email notifications documented but not implemented. Never describe a system that has not been built.

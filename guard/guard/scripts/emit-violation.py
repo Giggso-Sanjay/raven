@@ -13,13 +13,28 @@ REDACT = re.compile(
     re.IGNORECASE
 )
 
+def find_project_root():
+    d = os.getcwd()
+    while True:
+        if os.path.isdir(os.path.join(d, ".git")):
+            return d
+        parent = os.path.dirname(d)
+        if parent == d:
+            return os.getcwd()
+        d = parent
+
+RAVEN_ROOT = find_project_root()
+
+def raven_path(*parts):
+    return os.path.join(RAVEN_ROOT, ".raven", *parts)
+
 def safe(fn):
     try: return fn()
     except: return None
 
 def load_config():
-    manifest = safe(lambda: json.load(open(".raven/manifest.json"))) or {}
-    secrets  = safe(lambda: json.load(open(".raven/manifest.secrets.json"))) or {}
+    manifest = safe(lambda: json.load(open(raven_path("manifest.json")))) or {}
+    secrets  = safe(lambda: json.load(open(raven_path("manifest.secrets.json")))) or {}
     return manifest, secrets
 
 def detect_provider(manifest, secrets):
@@ -151,9 +166,9 @@ def write_oci(line, secrets, manifest):
 def write_local(line, secrets):
     def _write():
         if not secrets.get("audit", {}).get("local_fallback", False): return
-        os.makedirs(".raven/audit", exist_ok=True)
+        os.makedirs(raven_path("audit"), exist_ok=True)
         date_str = datetime.now(timezone.utc).strftime("%Y-%m-%d")
-        open(f".raven/audit/fallback-{date_str}.log","a").write(line+"\n")
+        open(raven_path("audit", f"fallback-{date_str}.log"),"a").write(line+"\n")
     safe(_write)
 
 def main():

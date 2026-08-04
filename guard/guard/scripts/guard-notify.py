@@ -7,12 +7,27 @@
 import argparse, json, os, sys, urllib.request
 from datetime import datetime, timezone
 
+def find_project_root():
+    d = os.getcwd()
+    while True:
+        if os.path.isdir(os.path.join(d, ".git")):
+            return d
+        parent = os.path.dirname(d)
+        if parent == d:
+            return os.getcwd()
+        d = parent
+
+RAVEN_ROOT = find_project_root()
+
+def raven_path(*parts):
+    return os.path.join(RAVEN_ROOT, ".raven", *parts)
+
 def safe(fn):
     try: return fn()
     except: return None
 
 def load_secrets():
-    return safe(lambda: json.load(open(".raven/manifest.secrets.json"))) or {}
+    return safe(lambda: json.load(open(raven_path("manifest.secrets.json")))) or {}
 
 def notify_pagerduty(detail, secrets):
     """P1 only. Silent if not configured."""
@@ -70,8 +85,8 @@ def append_digest(severity, detail, secrets):
     def _append():
         if not secrets.get("guard", {}).get("weekly_digest", False):
             return
-        os.makedirs(".raven/guard", exist_ok=True)
-        with open(".raven/guard/digest.log", "a") as f:
+        os.makedirs(raven_path("guard"), exist_ok=True)
+        with open(raven_path("guard", "digest.log"), "a") as f:
             f.write(json.dumps({
                 "ts": datetime.now(timezone.utc).isoformat(),
                 "severity": severity, "detail": detail,

@@ -138,6 +138,15 @@ def _detect_secrets(context: str) -> bool:
     return False
 
 
+def _find_project_root() -> Path:
+    """Walk up from cwd to the nearest .git directory. Falls back to cwd."""
+    d = Path.cwd()
+    for candidate in [d, *d.parents]:
+        if (candidate / ".git").is_dir():
+            return candidate
+    return d
+
+
 def _load_model_env() -> Dict[str, str]:
     """
     Load .model.env and extract tier → model mapping.
@@ -151,15 +160,18 @@ def _load_model_env() -> Dict[str, str]:
 
     Returns {tier: "provider/model"} dict
     """
-    # Check project-local first, then home
-    model_env_path = Path.cwd() / ".model.env"
+    # Check project-local first (resolved via repo root, not cwd), then home.
+    model_env_path = _find_project_root() / ".model.env"
     if not model_env_path.exists():
         model_env_path = Path.home() / ".model.env"
 
+    # Opus and Fable are intentionally excluded from these defaults — the
+    # router must never auto-select either; escalation requires an explicit
+    # user ask regardless of tier or score.
     defaults = {
         "SIMPLE": "anthropic/claude-haiku-4-5",
-        "MEDIUM": "anthropic/claude-sonnet-4-5",
-        "COMPLEX": "anthropic/claude-sonnet-4-5",
+        "MEDIUM": "anthropic/claude-sonnet-5",
+        "COMPLEX": "anthropic/claude-sonnet-5-high",
         "LOCAL_ONLY": "ollama/dolphin-mistral",
     }
 
