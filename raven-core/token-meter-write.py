@@ -17,6 +17,37 @@ PRICING_FILE = pathlib.Path(__file__).parent / "model-pricing.json"
 RAVEN_DIR = pathlib.Path.cwd() / ".raven"
 VAULT_DIR = pathlib.Path.home() / "RavenVault"
 AUDIT_DIR = RAVEN_DIR / "audit"
+CHECKPOINT_FILE = RAVEN_DIR / ".token-meter-checkpoint.json"
+
+
+def load_checkpoint() -> Dict[str, Any]:
+    """Read the last-processed transcript position for this session.
+
+    Stop fires on every turn, not once at true session end — this hook used
+    to re-read the WHOLE transcript from line 1 every time and re-add that
+    cumulative total into the monthly rollup, so a long session compounded
+    its own totals turn after turn (this is what produced e.g. 23,527
+    "sessions" and $3,727 in a single day in old rollups). Tracking how far
+    we've already read lets each run count only its own NEW usage.
+    """
+    try:
+        if CHECKPOINT_FILE.exists():
+            return json.loads(CHECKPOINT_FILE.read_text())
+    except Exception:
+        pass
+    return {"session_id": "", "last_line_index": 0}
+
+
+def write_checkpoint(session_id: str, last_line_index: int) -> None:
+    try:
+        RAVEN_DIR.mkdir(parents=True, exist_ok=True)
+        CHECKPOINT_FILE.write_text(json.dumps({
+            "session_id": session_id,
+            "last_line_index": last_line_index,
+            "last_processed_at": datetime.utcnow().isoformat() + "Z",
+        }, indent=2))
+    except Exception as e:
+        sys.stderr.write(f"Warning: Failed to write checkpoint: {e}\n")
 
 
 def load_pricing() -> Dict[str, Dict[str, float]]:
@@ -66,7 +97,12 @@ def is_raven_code(tool_uses: list, skill_uses: list) -> bool:
 
 
 def parse_transcript(transcript_path: str) -> Dict[str, Any]:
-    """Parse JSONL transcript and extract metrics."""
+    """Parse JSONL transcript and extract metrics for lines NEW since the
+    last checkpoint (delta), not the whole file every time.
+
+    Returns metrics plus "_new_line_count" (total lines in the file right
+    now) so the caller can persist the checkpoint after a successful write.
+    """
     metrics = {
         "session_id": "",
         "timestamp": datetime.utcnow().isoformat() + "Z",
@@ -89,13 +125,36 @@ def parse_transcript(transcript_path: str) -> Dict[str, Any]:
             "cost_usd": 0.0,
             "calls": 0,
         },
+        "_new_line_count": 0,
     }
     pricing = load_pricing()
     total_in, total_out, total_cache_read, total_cache_creation = 0, 0, 0, 0
 
     try:
         with open(transcript_path, "r") as f:
-            for line in f:
+            all_lines = f.readlines()
+
+        metrics["_new_line_count"] = len(all_lines)
+
+        # Peek the session_id from any line so we know whether the checkpoint
+        # (keyed by session_id) applies to THIS transcript or a prior one.
+        checkpoint = load_checkpoint()
+        start_index = 0
+        for line in all_lines:
+            if not line.strip():
+                continue
+            try:
+                peek = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            sid = peek.get("session_id")
+            if sid:
+                metrics["session_id"] = sid
+                if checkpoint.get("session_id") == sid:
+                    start_index = min(checkpoint.get("last_line_index", 0), len(all_lines))
+                break
+
+        for line in all_lines[start_index:]:
                 if not line.strip():
                     continue
                 try:
@@ -172,11 +231,58 @@ def parse_transcript(transcript_path: str) -> Dict[str, Any]:
 
 
 def write_session_json(metrics: Dict[str, Any]) -> bool:
-    """Write .raven/.model-session.json atomically."""
+    """Merge transcript-derived metrics into .raven/.model-session.json.
+
+    model-router.py (UserPromptSubmit hook) also writes this file, using a
+    raven_overhead/user_work schema. Overwriting the file wholesale here wiped
+    out that data (and vice versa) every other hook call, which is why
+    user_work tokens/cost_usd always read back as 0 — the two writers never
+    agreed on a shared shape. Read-merge-write instead of replace.
+    """
     try:
         RAVEN_DIR.mkdir(parents=True, exist_ok=True)
         session_file = RAVEN_DIR / ".model-session.json"
-        session_file.write_text(json.dumps(metrics, indent=2))
+
+        try:
+            existing = json.loads(session_file.read_text()) if session_file.exists() else {}
+        except Exception:
+            existing = {}
+
+        overhead = existing.get("raven_overhead", {"tokens": 0, "cost_usd": 0.0, "calls": 0, "by_source": {}})
+        user_work = existing.get("user_work", {
+            "tokens": 0, "cost_usd": 0.0, "calls": 0,
+            "tier_counts": {"SIMPLE": 0, "MEDIUM": 0, "COMPLEX": 0, "LOCAL_ONLY": 0},
+            "last_classification": None,
+        })
+
+        # Fold this transcript pass's raven_code totals into raven_overhead
+        # (transcript-detected Raven-infra calls are overhead too).
+        rc = metrics["raven_code"]
+        overhead["tokens"] = overhead.get("tokens", 0) + rc["tokens"]
+        overhead["cost_usd"] = overhead.get("cost_usd", 0.0) + rc["cost_usd"]
+        overhead["calls"] = overhead.get("calls", 0) + rc["calls"]
+        overhead.setdefault("by_source", {})
+
+        # Accumulate real transcript-derived usage into user_work — additive,
+        # never replaced, so model-router.py's tier_counts/last_classification
+        # (written on the next UserPromptSubmit) survive alongside it.
+        uw = metrics["user_work"]
+        user_work["tokens"] = user_work.get("tokens", 0) + uw["tokens"]
+        user_work["cost_usd"] = user_work.get("cost_usd", 0.0) + uw["cost_usd"]
+        user_work["calls"] = user_work.get("calls", 0) + uw["calls"]
+        user_work.setdefault("tier_counts", {"SIMPLE": 0, "MEDIUM": 0, "COMPLEX": 0, "LOCAL_ONLY": 0})
+        user_work.setdefault("last_classification", None)
+
+        merged = {
+            "session_started_at": existing.get("session_started_at") or metrics["timestamp"],
+            "raven_overhead": overhead,
+            "user_work": user_work,
+            "providers": existing.get("providers", {}),
+            "last_transcript_model": metrics.get("model", "unknown"),
+            "last_transcript_write": metrics["timestamp"],
+        }
+
+        session_file.write_text(json.dumps(merged, indent=2))
         return True
     except Exception as e:
         sys.stderr.write(f"Warning: Failed to write session JSON: {e}\n")
@@ -206,8 +312,30 @@ def _resolve_project_name() -> str:
     return pathlib.Path.cwd().name
 
 
+def _bump_sessions(container: Dict[str, Any], session_id: str) -> None:
+    """Increment container['sessions'] at most once per distinct session_id.
+
+    Stop fires every turn, so without this a single session's sessions count
+    would grow by 1 per turn instead of by 1 total (this is why old rollups
+    showed things like 23,527 "sessions" in a single day). Falls back to a
+    plain increment only when session_id is unknown/empty.
+    """
+    if not session_id:
+        container["sessions"] = int(container.get("sessions") or 0) + 1
+        return
+    seen = container.setdefault("_session_ids", [])
+    if session_id not in seen:
+        seen.append(session_id)
+        container["sessions"] = int(container.get("sessions") or 0) + 1
+
+
 def write_monthly_rollup(metrics: Dict[str, Any]) -> bool:
-    """Append/merge into ~/RavenVault/.metrics/YYYY-MM.json (per-project)."""
+    """Append/merge into ~/RavenVault/.metrics/YYYY-MM.json (per-project).
+
+    metrics["total"] is now a per-turn DELTA (see parse_transcript's
+    checkpoint logic), so summing it across calls is correct — it used to be
+    the transcript's cumulative total re-added every turn, which compounded.
+    """
     try:
         VAULT_DIR.mkdir(parents=True, exist_ok=True)
         metrics_dir = VAULT_DIR / ".metrics"
@@ -234,15 +362,16 @@ def write_monthly_rollup(metrics: Dict[str, Any]) -> bool:
         data.setdefault("by_project", {})
         data.setdefault("total", {})
 
+        session_id = metrics.get("session_id", "")
+        day_key = ts.strftime("%Y-%m-%d")
+        tok = int(metrics.get("total", {}).get("tokens", 0) or 0)
+        cost = float(metrics.get("total", {}).get("cost_usd", 0) or 0)
+
         # sessions counter may be int or list — keep both shapes safe
         if isinstance(data.get("sessions"), list):
             pass
         else:
-            data["sessions"] = int(data.get("sessions") or 0) + 1
-
-        day_key = ts.strftime("%Y-%m-%d")
-        tok = int(metrics.get("total", {}).get("tokens", 0) or 0)
-        cost = float(metrics.get("total", {}).get("cost_usd", 0) or 0)
+            _bump_sessions(data, session_id)
 
         # Unscoped by_day (legacy) + nested by_project
         if day_key not in data["by_day"] or not isinstance(data["by_day"].get(day_key), dict):
@@ -254,13 +383,13 @@ def write_monthly_rollup(metrics: Dict[str, Any]) -> bool:
             }
         day = data["by_day"][day_key]
         day.setdefault("by_project", {})
-        day["sessions"] = int(day.get("sessions") or 0) + 1
+        _bump_sessions(day, session_id)
         day["tokens"] = int(day.get("tokens") or 0) + tok
         day["cost_usd"] = float(day.get("cost_usd") or 0) + cost
         pb = day["by_project"].setdefault(
             project, {"sessions": 0, "tokens": 0, "cost_usd": 0.0}
         )
-        pb["sessions"] += 1
+        _bump_sessions(pb, session_id)
         pb["tokens"] += tok
         pb["cost_usd"] += cost
 
@@ -269,23 +398,26 @@ def write_monthly_rollup(metrics: Dict[str, Any]) -> bool:
             project,
             {"sessions": 0, "tokens": 0, "cost_usd": 0.0, "by_day": {}},
         )
-        prow["sessions"] = int(prow.get("sessions") or 0) + 1
+        _bump_sessions(prow, session_id)
         prow["tokens"] = int(prow.get("tokens") or 0) + tok
         prow["cost_usd"] = float(prow.get("cost_usd") or 0) + cost
         prow.setdefault("by_day", {})
         pd = prow["by_day"].setdefault(
             day_key, {"sessions": 0, "tokens": 0, "cost_usd": 0.0}
         )
-        pd["sessions"] += 1
+        _bump_sessions(pd, session_id)
         pd["tokens"] += tok
         pd["cost_usd"] += cost
 
-        # Also append a project-tagged row into sessions list if list-shaped
+        # Also append a project-tagged row into sessions list if list-shaped.
+        # A delta row per turn is still meaningful here since tok/cost are
+        # per-turn deltas, not cumulative totals — no double count.
         if isinstance(data.get("sessions"), list):
             data["sessions"].append(
                 {
                     "date": day_key,
                     "started_at": metrics.get("timestamp"),
+                    "session_id": session_id,
                     "project": project,
                     "sessions": 1,
                     "tokens": tok,
@@ -342,14 +474,20 @@ def main() -> None:
         sys.stderr.write("No transcript_path in hook input; skipping metrics\n")
         return
 
-    # Parse transcript
+    # Parse transcript — only the delta since the last checkpoint
     metrics = parse_transcript(transcript_path)
     metrics["project"] = _resolve_project_name()
+    new_line_count = metrics.pop("_new_line_count", 0)
 
     # Write all three atomically
     write_session_json(metrics)
     write_monthly_rollup(metrics)
     write_audit_log(metrics)
+
+    # Only advance the checkpoint after a successful parse, so a transient
+    # read failure doesn't silently skip real usage on the next run.
+    if metrics.get("session_id"):
+        write_checkpoint(metrics["session_id"], new_line_count)
 
     # Silent on success (hook should be non-blocking)
 

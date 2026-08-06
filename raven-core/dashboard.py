@@ -2207,6 +2207,8 @@ def render_knowledge_graph_section(
         )
         ico = (pnode or {}).get("icon") or "project"
         ico_html = icon_img_html(ico, 16, pname) if icon_img_html else "📦"
+        not_found_span = ' · <span style="color:#64748b;font-size:11px">not found under search roots</span>'
+        local_or_fallback = (' · ' + local_html) if local_html else not_found_span
         repo_rows += (
             f"<tr style='cursor:pointer' onclick=\"window.kgShowNode('projects/{pname}')\">"
             f"<td>{ico_html} <strong>{pname}</strong></td>"
@@ -2215,7 +2217,7 @@ def render_knowledge_graph_section(
             f"<td class='num'>{format_usd(st.get('cost_usd',0))}</td>"
             f"<td onclick='event.stopPropagation()'>"
             f"<a href='{url}' target='_blank' rel='noopener'>GitHub ↗</a>"
-            f"{(' · ' + local_html) if local_html else ' · <span style=\"color:#64748b;font-size:11px\">not found under search roots</span>'}"
+            f"{local_or_fallback}"
             f"</td></tr>\n"
         )
         project_chips += (
@@ -3223,6 +3225,12 @@ def main():
     parser.add_argument("--audit", action="store_true",
                         help="Run drift audit on attribution buckets (Method C — sampling safety net)")
     parser.add_argument("--open", action="store_true", help="Open HTML report after writing")
+    parser.add_argument(
+        "--if-stale", type=int, default=None, metavar="MINUTES",
+        help="Skip the run entirely if dashboard-stamp.json is younger than MINUTES. "
+             "For unattended Stop-hook use — Stop fires every turn, so without this "
+             "the ~3000-line HTML build would re-run on every single turn.",
+    )
     parser.add_argument("--days", type=int, default=30, help="Window in days (default 30)")
     parser.add_argument("--month", type=str, help="Specific month YYYY-MM")
     parser.add_argument("--project", type=str, help="Filter by project name")
@@ -3236,6 +3244,22 @@ def main():
     args, unknown = parser.parse_known_args()
     if unknown:
         print(f"dashboard: ignoring unknown args {unknown}", file=sys.stderr)
+
+    if args.if_stale is not None:
+        stamp_path = VAULT / "dashboard-stamp.json"
+        try:
+            if stamp_path.exists():
+                stamp_data = json.loads(stamp_path.read_text())
+                generated_at = datetime.strptime(
+                    stamp_data["generated_at"], "%Y-%m-%d %H:%M:%S"
+                )
+                age_minutes = (datetime.now() - generated_at).total_seconds() / 60
+                if age_minutes < args.if_stale:
+                    # Fresh enough — skip the rebuild silently (this is the
+                    # common case when called from a Stop hook every turn).
+                    return
+        except Exception:
+            pass  # missing/corrupt stamp — fall through and build
 
     if not (
         args.cli or args.obsidian or args.html or args.json or args.all
@@ -3324,18 +3348,30 @@ def main():
         tmp = VAULT_DASHBOARD_HTML.with_suffix(".html.tmp")
         tmp.write_text(html_out)
         tmp.replace(VAULT_DASHBOARD_HTML)
-        # Remove legacy dual-file names (never delete dashboard.html itself)
-        for legacy_name in ("dashboard-kg.html", "OPEN-GRAPH.html"):
+        # Remove legacy dual-file names (never delete dashboard.html itself).
+        # dashboard-kg.html used to be in this cleanup list, but it's now the
+        # deliberate fixed-name snapshot written below — no longer legacy.
+        for legacy_name in ("OPEN-GRAPH.html",):
             lp = VAULT / legacy_name
             try:
                 if lp.is_file():
                     lp.unlink()
             except OSError:
                 pass
+        # Fixed-name snapshot alongside dashboard.html — same content, stable
+        # filename across versions (PLUGIN_VERSION is shown inside the page's
+        # meta tag/footer instead of the filename). Overwritten on every
+        # rebuild, so it always reflects whatever version last ran.
+        versioned_path = VAULT / "dashboard-kg.html"
+        vtmp = versioned_path.with_suffix(".html.tmp")
+        vtmp.write_text(html_out)
+        vtmp.replace(versioned_path)
         stamp = {
             "build": "kg-v2-grounded+cite",
             "generated_at": metadata.get("report_generated_at_local"),
             "path": str(VAULT_DASHBOARD_HTML),
+            "versioned_path": str(versioned_path),
+            "plugin_version": PLUGIN_VERSION,
             "bytes": len(html_out),
             "graph_nodes": len((graph or {}).get("nodes") or []),
             "graph_edges": len((graph or {}).get("edges") or []),

@@ -279,20 +279,22 @@ def write_session_json(tier: str, score: int, reasons: List[str], model: str, pr
     else:
         data = {}
 
-    # Init schema if missing or legacy
-    if "raven_overhead" not in data or "user_work" not in data:
-        data = {
-            "session_started_at": data.get("session_started_at") or (datetime.utcnow().isoformat() + "Z"),
-            "raven_overhead": {"tokens": 0, "cost_usd": 0.0, "calls": 0, "by_source": {}},
-            "user_work": {
-                "tokens": 0,
-                "cost_usd": 0.0,
-                "calls": 0,
-                "tier_counts": {"SIMPLE": 0, "MEDIUM": 0, "COMPLEX": 0, "LOCAL_ONLY": 0},
-                "last_classification": None,
-            },
-            "providers": {},
-        }
+    # Backfill missing schema keys only — never reset keys that already hold
+    # real data. token-meter-write.py (Stop hook) may have already populated
+    # user_work.tokens/cost_usd from actual transcript usage; wiping the file
+    # here on every UserPromptSubmit call would erase that real data (this was
+    # the root cause of user_work always reading back as 0 tokens/$0).
+    data.setdefault("session_started_at", datetime.utcnow().isoformat() + "Z")
+    data.setdefault("raven_overhead", {"tokens": 0, "cost_usd": 0.0, "calls": 0, "by_source": {}})
+    data.setdefault("user_work", {
+        "tokens": 0,
+        "cost_usd": 0.0,
+        "calls": 0,
+        "tier_counts": {"SIMPLE": 0, "MEDIUM": 0, "COMPLEX": 0, "LOCAL_ONLY": 0},
+        "last_classification": None,
+    })
+    data["user_work"].setdefault("tier_counts", {"SIMPLE": 0, "MEDIUM": 0, "COMPLEX": 0, "LOCAL_ONLY": 0})
+    data.setdefault("providers", {})
 
     # Update the appropriate bucket
     bucket = data[source] if source in ("user_work", "raven_overhead") else data["user_work"]

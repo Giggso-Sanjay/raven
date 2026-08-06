@@ -33,7 +33,9 @@ __pycache__/
 .raven/.cache/
 .raven/state/
 .raven/.model-session.json
+.raven/.token-meter-checkpoint.json
 scripts/.raven/
 
 # Raven cross-team handoff docs — local artifact, share manually, don't commit
 .raven/handoff/
+raven-dash-kg.md
