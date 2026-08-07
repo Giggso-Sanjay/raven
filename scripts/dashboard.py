@@ -2666,6 +2666,34 @@ def render_cost_log_section(metadata: dict) -> str:
     latest = rows[-1]
     recent = rows[-30:]
 
+    # Dual-path verification verdict (written by token-meter-write.py):
+    # Path A = accumulated per-turn deltas; Path B = independent full-
+    # transcript recompute. Disagreement >5% renders UNVERIFIED, loudly.
+    verify_html = ""
+    verify_path = RAVEN_DIR / ".cost-verify.json"
+    if verify_path.exists():
+        try:
+            v = json.loads(verify_path.read_text())
+            if v.get("verified"):
+                verify_html = (
+                    f'<span style="color:#22c55e;font-weight:600">✅ VERIFIED</span> — '
+                    f'both calculation paths agree within {v.get("variance_pct", "?")}% '
+                    f'(A: {format_usd(v.get("path_a_usd") or 0)} deltas · '
+                    f'B: {format_usd(v.get("path_b_usd") or 0)} recompute)'
+                )
+            else:
+                verify_html = (
+                    f'<span style="color:#dc2626;font-weight:700">⚠️ UNVERIFIED — paths disagree '
+                    f'by {v.get("variance_pct", "?")}%</span> '
+                    f'(A: {format_usd(v.get("path_a_usd") or 0)} deltas vs '
+                    f'B: {format_usd(v.get("path_b_usd") or 0)} recompute) — treat session figures '
+                    f'as suspect until the divergence is explained'
+                )
+        except Exception:
+            verify_html = ""
+    if not verify_html:
+        verify_html = "Verification pending — dual-path check runs on the next Stop hook."
+
     body = ""
     for r in reversed(recent):
         est = r.get("est_cost_usd")
@@ -2690,6 +2718,11 @@ def render_cost_log_section(metadata: dict) -> str:
     "Est" is the router's pre-turn guess; "Computed" is real token usage × pricing —
     never merged. Raven's own hook scripts make zero API calls and are never logged as cost.
     Showing latest {len(recent)} rows.</span>
+    <br><span style="font-size:13px">{verify_html}</span>
+    <br><span style="color:#94a3b8;font-size:11px">Citation — every session figure above is
+    backed by two independent calculations: Path A sums per-turn checkpoint deltas
+    (cost-log.jsonl); Path B recomputes the whole transcript from scratch
+    (.raven/.cost-verify.json). Disagreement &gt;5% is flagged, never averaged.</span>
   </div>
   <table>
     <tr><th>When (UTC)</th><th>Model</th><th>Source</th><th class="num">Tokens</th>

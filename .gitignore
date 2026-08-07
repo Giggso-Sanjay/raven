@@ -43,3 +43,4 @@ scripts/.raven/
 # Raven cross-team handoff docs — local artifact, share manually, don't commit
 .raven/handoff/
 raven-dash-kg.md
+.raven/.cost-verify.json

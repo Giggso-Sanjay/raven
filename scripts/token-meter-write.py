@@ -580,6 +580,103 @@ def write_cost_log(metrics: Dict[str, Any]) -> bool:
         return False
 
 
+COST_VERIFY = RAVEN_DIR / ".cost-verify.json"
+VARIANCE_THRESHOLD_PCT = 5.0
+
+
+def full_transcript_totals(transcript_path: str) -> float:
+    """PATH B — independent session-cost recompute (dual-path verification).
+
+    Deliberately NOT built on parse_transcript(): no checkpoint, no buckets,
+    no delta logic — one dumb pass over the whole file summing every
+    assistant message's usage at pricing rates. The b37f2ba compounding bug
+    lived in the AGGREGATION layer (re-adding cumulative totals per turn);
+    this path has no aggregation layer to get wrong. If Path A's accumulated
+    session total drifts >5% from this figure, the number is flagged
+    UNVERIFIED instead of being presented as fact.
+    """
+    pricing = load_pricing()
+    total = 0.0
+    try:
+        with open(transcript_path, "r") as f:
+            for line in f:
+                if not line.strip():
+                    continue
+                try:
+                    msg = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                if msg.get("role") != "assistant":
+                    continue
+                usage = msg.get("message", {}).get("usage", {})
+                if not usage:
+                    continue
+                model = msg.get("message", {}).get("model", "unknown")
+                rate_in = pricing.get(model, {}).get("input_per_1m", 1)
+                total += get_cost(model, usage.get("input_tokens", 0),
+                                  usage.get("output_tokens", 0), pricing)
+                total += (usage.get("cache_read_input_tokens", 0) / 1_000_000) * rate_in * 0.1
+                total += (usage.get("cache_creation_input_tokens", 0) / 1_000_000) * rate_in * 1.25
+    except Exception as e:
+        sys.stderr.write(f"Warning: path-B recompute failed: {e}\n")
+        return -1.0
+    return round(total, 6)
+
+
+def write_cost_verify(session_id: str, transcript_path: str, timestamp: str) -> None:
+    """Compare Path A (accumulated deltas in cost-log) vs Path B (full
+    recompute); persist verdict for the dashboard and flag disagreements."""
+    try:
+        path_b = full_transcript_totals(transcript_path)
+        if path_b < 0:
+            return
+
+        path_a = 0.0
+        if COST_LOG.exists():
+            for line in COST_LOG.read_text().splitlines():
+                try:
+                    row = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                if session_id and row.get("session_id") == session_id:
+                    path_a += float(row.get("computed_cost_usd") or 0)
+
+        if path_b > 0:
+            variance_pct = abs(path_a - path_b) / path_b * 100
+        else:
+            variance_pct = 0.0 if path_a == 0 else 100.0
+
+        verified = variance_pct <= VARIANCE_THRESHOLD_PCT
+        verdict = {
+            "session_id": session_id,
+            "ts": timestamp,
+            "path_a_usd": round(path_a, 6),
+            "path_a_method": "sum of per-turn checkpoint deltas (cost-log.jsonl)",
+            "path_b_usd": path_b,
+            "path_b_method": "independent full-transcript recompute",
+            "variance_pct": round(variance_pct, 2),
+            "verified": verified,
+            "threshold_pct": VARIANCE_THRESHOLD_PCT,
+        }
+        COST_VERIFY.write_text(json.dumps(verdict, indent=2) + "\n")
+
+        if not verified:
+            # Loud in the audit log too — never silently average or hide.
+            AUDIT_DIR.mkdir(parents=True, exist_ok=True)
+            ts = datetime.fromisoformat(timestamp.replace("Z", "+00:00"))
+            log_file = AUDIT_DIR / f"{ts.strftime('%Y-%m-%d')}.log"
+            with open(log_file, "a") as f:
+                f.write(json.dumps({
+                    "timestamp": timestamp,
+                    "event": "cost-verify-flag",
+                    "session_id": session_id,
+                    "detail": f"UNVERIFIED — cost paths disagree by {variance_pct:.1f}% "
+                              f"(A=${path_a:.6f} deltas vs B=${path_b:.6f} recompute)",
+                }) + "\n")
+    except Exception as e:
+        sys.stderr.write(f"Warning: cost verification failed: {e}\n")
+
+
 def main() -> None:
     """Read Stop hook stdin, parse transcript, write metrics."""
     try:
@@ -603,6 +700,10 @@ def main() -> None:
     write_monthly_rollup(metrics)
     write_audit_log(metrics)
     write_cost_log(metrics)
+
+    # Dual-path verification: Path A (deltas just written) vs Path B
+    # (independent full recompute). >5% disagreement = flagged UNVERIFIED.
+    write_cost_verify(metrics.get("session_id", ""), transcript_path, metrics["timestamp"])
 
     # Only advance the checkpoint after a successful parse, so a transient
     # read failure doesn't silently skip real usage on the next run.
