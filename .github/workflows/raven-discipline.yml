@@ -45,3 +45,15 @@ jobs:
           python-version: "3.12"
       - name: Config canon check (distribution configs generated from .claude/settings.json)
         run: python3 scripts/export-hook-configs.py --check
+
+  raven-skill-manifest-check:
+    name: raven-skill-manifest-check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Skill manifest lint (registry, overlap resolutions, core/skills drift)
+        run: python3 scripts/build-skill-manifest.py --check

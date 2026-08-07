@@ -1,0 +1,590 @@
+{
+  "_generated": "by scripts/build-skill-manifest.py \u2014 regenerate after adding/removing skills; overlap resolutions live in the OVERRIDES table in that script",
+  "skills": {
+    "agent-chaining": {
+      "name": "agent-chaining",
+      "paths": [
+        "skills/agent-chaining"
+      ],
+      "owner": "raven-core-team",
+      "status": "active",
+      "purpose": "Use when designing or reviewing multi-agent systems, subagent orchestration, parallel vs sequential agent execution, context passing between agents, tool delegation, and agent memory patterns. Platfor"
+    },
+    "aiml-specialist": {
+      "name": "aiml-specialist",
+      "paths": [
+        "skills/aiml-specialist"
+      ],
+      "owner": "raven-core-team",
+      "status": "active",
+      "purpose": "Use for any AI/ML Engineering question. Assumes Andrej Karpathy (AI researcher) persona. Deep multi-dimensional analysis. Bullets not prose."
+    },
+    "andie": {
+      "name": "andie",
+      "paths": [
+        "skills/andie"
+      ],
+      "owner": "raven-core-team",
+      "status": "active",
+      "purpose": "USE PROACTIVELY whenever the user asks for: planning, design, architecture decision, tradeoff analysis, comparing approaches, strategy, system design, refactor scope, deciding what to build, or any no",
+      "domain": "andie",
+      "layering": "Front-door orchestrator; routes to andie-jr (debug), andie-guru (explain), andie-frames (browser tests)."
+    },
+    "andie-frames": {
+      "name": "andie-frames",
+      "paths": [
+        "skills/andie-frames"
+      ],
+      "owner": "raven-core-team",
+      "status": "active",
+      "purpose": "3-phase browser testing skill. Generates UI\u00b7UX\u00b7Data\u00b7Security\u00b7Correctness\u00b7Speed test cases, drives visible Chrome live, writes Raven-compatible blocker MDs. Human watches and guides throughout. Andie p",
+      "domain": "andie",
+      "layering": "Browser-testing arm with andie packed inside; no external skill calls."
+    },
+    "andie-guru": {
+      "name": "andie-guru",
+      "paths": [
+        "skills/andie-guru"
+      ],
+      "owner": "raven-core-team",
+      "status": "active",
+      "purpose": "USE PROACTIVELY whenever the user asks: 'explain', 'what does this mean', 'in plain English', 'break it down', 'simplify', 'translate for non-tech', 'help me understand', or asks for a layman summary ",
+      "domain": "andie",
+      "layering": "On-demand Feynman explainer for andie output; never auto-loaded."
+    },
+    "andie-jr": {
+      "name": "andie-jr",
+      "paths": [
+        "skills/andie-jr"
+      ],
+      "owner": "raven-core-team",
+      "status": "active",
+      "purpose": "USE PROACTIVELY whenever the user reports: a bug, error, exception, stack trace, regression, test failure, 'not working', 'broken', 'why is X failing', 'X stopped working', 'doesn't behave', unexpecte",
+      "domain": "andie",
+      "layering": "Brownfield debug arm of andie \u2014 receives handoffs, never orchestrates."
+    },
+    "aws-specialist": {
+      "name": "aws-specialist",
+      "paths": [
+        "skills/aws-specialist"
+      ],
+      "owner": "raven-core-team",
+      "status": "active",
+      "purpose": "Use for any AWS question. Assumes Werner Vogels (CTO, Amazon) persona. Deep multi-dimensional analysis. Bullets not prose."
+    },
+    "azure-specialist": {
+      "name": "azure-specialist",
+      "paths": [
+        "skills/azure-specialist"
+      ],
+      "owner": "raven-core-team",
+      "status": "active",
+      "purpose": "Use for any Azure question. Assumes Mark Russinovich (CTO, Microsoft Azure) persona. Deep multi-dimensional analysis. Bullets not prose."
+    },
+    "bigdata-specialist": {
+      "name": "bigdata-specialist",
+      "paths": [
+        "skills/bigdata-specialist"
+      ],
+      "owner": "raven-core-team",
+      "status": "active",
+      "purpose": "Use for any Big Data / Analytics question. Assumes Matei Zaharia (Spark creator) persona. Deep multi-dimensional analysis. Bullets not prose."
+    },
+    "dataeng-specialist": {
+      "name": "dataeng-specialist",
+      "paths": [
+        "skills/dataeng-specialist"
+      ],
+      "owner": "raven-core-team",
+      "status": "active",
+      "purpose": "Use for any Data Engineering question. Assumes Joe Hellerstein (database researcher) persona. Deep multi-dimensional analysis. Bullets not prose."
+    },
+    "db-router": {
+      "name": "db-router",
+      "paths": [
+        "skills/db-router"
+      ],
+      "owner": "raven-core-team",
+      "status": "active",
+      "purpose": "Pure routing table. Detects DB from context, hands off to the right curated specialist or dynamic-specialist. Carries zero specialist content itself.",
+      "domain": "db",
+      "layering": "Pure routing table; detects DB, hands to db-specialist or a per-DB specialist. Zero content."
+    },
+    "db-specialist": {
+      "name": "db-specialist",
+      "paths": [
+        "skills/db-specialist"
+      ],
+      "owner": "raven-core-team",
+      "status": "active",
+      "purpose": "Universal database orchestrator. Use for ANY database question \u2014 schema",
+      "domain": "db",
+      "layering": "Universal DB orchestrator; loads per-DB sub-skills (postgres, oracle-db, graph-db, vector-db, redis)."
+    },
+    "devops-specialist": {
+      "name": "devops-specialist",
+      "paths": [
+        "skills/devops-specialist"
+      ],
+      "owner": "raven-core-team",
+      "status": "active",
+      "purpose": "Use for any DevOps / SRE question. Assumes Kelsey Hightower (SRE, Google) persona. Deep multi-dimensional analysis. Bullets not prose."
+    },
+    "dynamic-specialist": {
+      "name": "dynamic-specialist",
+      "paths": [
+        "skills/dynamic-specialist"
+      ],
+      "owner": "raven-core-team",
+      "status": "active",
+      "purpose": "Use for ANY platform, library, or domain with no curated specialist"
+    },
+    "fastapi-specialist": {
+      "name": "fastapi-specialist",
+      "paths": [
+        "skills/fastapi-specialist"
+      ],
+      "owner": "raven-core-team",
+      "status": "active",
+      "purpose": "Use for any FastAPI question. Assumes Sebasti\u00e1n Ram\u00edrez (FastAPI creator) persona. Deep multi-dimensional analysis. Bullets not prose."
+    },
+    "gcp-specialist": {
+      "name": "gcp-specialist",
+      "paths": [
+        "skills/gcp-specialist"
+      ],
+      "owner": "raven-core-team",
+      "status": "active",
+      "purpose": "Use for any GCP question. Assumes Jeff Dean (Google Brain) persona. Deep multi-dimensional analysis. Bullets not prose."
+    },
+    "graph-db-specialist": {
+      "name": "graph-db-specialist",
+      "paths": [
+        "skills/graph-db-specialist"
+      ],
+      "owner": "raven-core-team",
+      "status": "active",
+      "purpose": "Use for graph database design, querying, and deployment. Sub-modes \u2014 falkordb \u00b7 neo4j \u00b7 property-graph. Assumes Jim Webber (Neo4j co-author) persona. Bullets not prose.",
+      "domain": "db",
+      "layering": "Leaf specialist under db-specialist routing."
+    },
+    "k8s-specialist": {
+      "name": "k8s-specialist",
+      "paths": [
+        "skills/k8s-specialist"
+      ],
+      "owner": "raven-core-team",
+      "status": "active",
+      "purpose": "Use for any Kubernetes question. Assumes Kelsey Hightower (K8s evangelist, Google) persona. Deep multi-dimensional analysis. Bullets not prose."
+    },
+    "kafka-specialist": {
+      "name": "kafka-specialist",
+      "paths": [
+        "skills/kafka-specialist"
+      ],
+      "owner": "raven-core-team",
+      "status": "active",
+      "purpose": "Use for any Kafka / Streaming question. Assumes Jay Kreps (Kafka creator, Confluent) persona. Deep multi-dimensional analysis. Bullets not prose."
+    },
+    "log-management-specialist": {
+      "name": "log-management-specialist",
+      "paths": [
+        "skills/log-management-specialist"
+      ],
+      "owner": "raven-core-team",
+      "status": "active",
+      "purpose": "Use when designing or reviewing logging pipelines, structured logging, log aggregation (ELK, Loki, CloudWatch), retention policies, PII scrubbing, alerting on log patterns, or distributed tracing inte"
+    },
+    "ml-ops-specialist": {
+      "name": "ml-ops-specialist",
+      "paths": [
+        "skills/ml-ops-specialist"
+      ],
+      "owner": "raven-core-team",
+      "status": "active",
+      "purpose": "Use for ML pipelines, feature stores, experiment tracking, and ML operations. Sub-modes \u2014 pipelines \u00b7 feature-stores \u00b7 experiment-tracking. Assumes Chip Huyen (ML systems author) persona. Bullets not "
+    },
+    "ml-specialist": {
+      "name": "ml-specialist",
+      "paths": [
+        "skills/ml-specialist"
+      ],
+      "owner": "raven-core-team",
+      "status": "active",
+      "purpose": "Use for ML model training, inference, serving, and deployment. Assumes Andrej Karpathy persona. Sub-modes \u2014 training \u00b7 inference \u00b7 serving. Bullets not prose."
+    },
+    "nicegui-specialist": {
+      "name": "nicegui-specialist",
+      "paths": [
+        "skills/nicegui-specialist"
+      ],
+      "owner": "raven-core-team",
+      "status": "active",
+      "purpose": "Use for any NiceGUI question. Assumes Falko Schindler (NiceGUI creator) persona. Deep multi-dimensional analysis. Bullets not prose."
+    },
+    "oci-specialist": {
+      "name": "oci-specialist",
+      "paths": [
+        "skills/oci-specialist"
+      ],
+      "owner": "raven-core-team",
+      "status": "deprecated",
+      "purpose": "Use for any OCI (Oracle Cloud) question. Assumes Larry Ellison (Oracle founder) persona. Deep multi-dimensional analysis. Bullets not prose.",
+      "domain": "oci",
+      "superseded_by": "oracle-oci-specialist",
+      "note": "Generic OCI persona superseded by the Oracle-family suite (oracle-oci-specialist)."
+    },
+    "odoo-specialist": {
+      "name": "odoo-specialist",
+      "paths": [
+        "skills/odoo-specialist"
+      ],
+      "owner": "raven-core-team",
+      "status": "active",
+      "purpose": "Use for any Odoo question \u2014 module development, ORM, XML views, QWeb,"
+    },
+    "oracle-apex-specialist": {
+      "name": "oracle-apex-specialist",
+      "paths": [
+        "skills/oracle-apex-specialist"
+      ],
+      "owner": "raven-core-team",
+      "status": "active",
+      "purpose": "Oracle APEX application development. Trigger on: APEX page builder, APEX REST, APEX authentication, APEX IR/IG, APEX charts, APEX plug-ins, APEXLang component generation, APEX deployment, APEX upgrade"
+    },
+    "oracle-apexlang-specialist": {
+      "name": "oracle-apexlang-specialist",
+      "paths": [
+        "skills/oracle-apexlang-specialist"
+      ],
+      "owner": "raven-core-team",
+      "status": "active",
+      "purpose": "APEXLang deterministic component generation for Oracle APEX. Trigger on: APEXLang, .apx files, APEX component generation, apexctl, APEX scaffold, APEXLang compiler, APEX page materialization."
+    },
+    "oracle-db-specialist": {
+      "name": "oracle-db-specialist",
+      "paths": [
+        "skills/oracle-db-specialist"
+      ],
+      "owner": "raven-core-team",
+      "status": "active",
+      "purpose": "Oracle Database guidance for SQL, PL/SQL, SQLcl, ORDS, administration, performance, security, migrations, and agent-safe database workflows. Version-aware across 19c, 21c, and 23ai. Trigger on: SQL, P",
+      "domain": "db",
+      "layering": "Leaf specialist under db-specialist routing."
+    },
+    "oracle-fusion-specialist": {
+      "name": "oracle-fusion-specialist",
+      "paths": [
+        "skills/oracle-fusion-specialist"
+      ],
+      "owner": "raven-core-team",
+      "status": "active",
+      "purpose": "Oracle Fusion ERP \u2014 Order to Cash, Procure to Pay, Record to Report, FBDI, BIP, OIC, REST APIs, OTBI, FRS, ADW. Trigger on: Oracle Fusion, Oracle ERP, O2C, P2P, R2R, FBDI, BIP reports, OIC integration"
+    },
+    "oracle-graal-specialist": {
+      "name": "oracle-graal-specialist",
+      "paths": [
+        "skills/oracle-graal-specialist"
+      ],
+      "owner": "raven-core-team",
+      "status": "active",
+      "purpose": "GraalVM Native Image \u2014 builds, configuration, reachability metadata, and troubleshooting. Trigger on: native-image, GraalVM, native-maven-plugin, org.graalvm.buildtools.native, reachability metadata, "
+    },
+    "oracle-oci-specialist": {
+      "name": "oracle-oci-specialist",
+      "paths": [
+        "skills/oracle-oci-specialist"
+      ],
+      "owner": "raven-core-team",
+      "status": "active",
+      "purpose": "Oracle Cloud Infrastructure \u2014 compute, networking, storage, databases, security, DevOps pipelines, Container Engine (OKE), Functions, Streaming, AI services. Trigger on: OCI, Oracle Cloud, OKE, OCI Co",
+      "domain": "oci",
+      "layering": "Canonical OCI skill within the oracle-* suite."
+    },
+    "postgres-specialist": {
+      "name": "postgres-specialist",
+      "paths": [
+        "skills/postgres-specialist"
+      ],
+      "owner": "raven-core-team",
+      "status": "active",
+      "purpose": "Use for any PostgreSQL question. Assumes Michael Stonebraker (database architecture) persona. Deep multi-dimensional analysis. Bullets not prose.",
+      "domain": "db",
+      "layering": "Leaf specialist under db-specialist routing."
+    },
+    "raven-approve": {
+      "name": "raven-approve",
+      "paths": [
+        "skills/raven-approve"
+      ],
+      "owner": "raven-core-team",
+      "status": "active",
+      "purpose": "Approve pending library requests and discovered tools. Updates manifest.json with approval metadata. Handles both library approvals and Tier 2b tool acceptance from discover()."
+    },
+    "raven-core": {
+      "name": "raven-core",
+      "paths": [
+        "skills/raven-core"
+      ],
+      "owner": "raven-core-team",
+      "status": "active",
+      "purpose": "Use when writing code, adding imports, creating files, committing,"
+    },
+    "raven-dashboard": {
+      "name": "raven-dashboard",
+      "paths": [
+        "skills/raven-dashboard"
+      ],
+      "owner": "raven-core-team",
+      "status": "active",
+      "purpose": "Generate tokenomics + usage dashboard with recommendations. Use when user asks for \"dashboard\", \"tokenomics\", \"token usage\", \"cost report\", \"usage metrics\", \"Raven status\", or \"how much have I spent\"."
+    },
+    "raven-debug": {
+      "name": "raven-debug",
+      "paths": [
+        "skills/raven-debug"
+      ],
+      "owner": "raven-core-team",
+      "status": "active",
+      "purpose": "Use to run a full Raven boot diagnostic."
+    },
+    "raven-document": {
+      "name": "raven-document",
+      "paths": [
+        "skills/raven-document"
+      ],
+      "owner": "raven-core-team",
+      "status": "active",
+      "purpose": "Use when adding or updating documentation. Enforces docstrings"
+    },
+    "raven-expert": {
+      "name": "raven-expert",
+      "paths": [
+        "skills/raven-expert"
+      ],
+      "owner": "raven-core-team",
+      "status": "active",
+      "purpose": "Use when deep expertise is needed \u2014 complex architecture decisions,"
+    },
+    "raven-harden": {
+      "name": "raven-harden",
+      "paths": [
+        "skills/raven-harden"
+      ],
+      "owner": "raven-core-team",
+      "status": "active",
+      "purpose": "Reviews security_log.md and promotes accumulated observations into"
+    },
+    "raven-incident": {
+      "name": "raven-incident",
+      "paths": [
+        "skills/raven-incident"
+      ],
+      "owner": "raven-core-team",
+      "status": "active",
+      "purpose": "Use to create a manual incident report for Guard events"
+    },
+    "raven-init": {
+      "name": "raven-init",
+      "paths": [
+        "skills/raven-init"
+      ],
+      "owner": "raven-core-team",
+      "status": "active",
+      "purpose": "Initialize Raven for a new project. Andie-conversational \u2014 auto-scans project, asks at most 2 questions, generates manifest.json, validates, and commits with audit trail."
+    },
+    "raven-plan": {
+      "name": "raven-plan",
+      "paths": [
+        "skills/raven-plan"
+      ],
+      "owner": "raven-core-team",
+      "status": "active",
+      "purpose": "Use when planning any new feature, module, service, or refactor."
+    },
+    "raven-refactor": {
+      "name": "raven-refactor",
+      "paths": [
+        "skills/raven-refactor"
+      ],
+      "owner": "raven-core-team",
+      "status": "active",
+      "purpose": "Use when refactoring code to meet Raven standards. Combines"
+    },
+    "raven-registry-register": {
+      "name": "raven-registry-register",
+      "paths": [
+        "skills/raven-registry-register"
+      ],
+      "owner": "raven-core-team",
+      "status": "active",
+      "purpose": "Use to register a project in the Raven registry so it gets"
+    },
+    "raven-registry-sync": {
+      "name": "raven-registry-sync",
+      "paths": [
+        "skills/raven-registry-sync"
+      ],
+      "owner": "raven-core-team",
+      "status": "active",
+      "purpose": "Use to sync all registered Raven projects to the current engine"
+    },
+    "raven-review": {
+      "name": "raven-review",
+      "paths": [
+        "skills/raven-review"
+      ],
+      "owner": "raven-core-team",
+      "status": "active",
+      "purpose": "Use when reviewing code, PRs, or any file changes. Extends"
+    },
+    "raven-scaffold": {
+      "name": "raven-scaffold",
+      "paths": [
+        "skills/raven-scaffold"
+      ],
+      "owner": "raven-core-team",
+      "status": "active",
+      "purpose": "Use when starting a new feature, module, or component."
+    },
+    "raven-search": {
+      "name": "raven-search",
+      "paths": [
+        "skills/raven-search"
+      ],
+      "owner": "raven-core-team",
+      "status": "active",
+      "purpose": "Use when developer wants to find, evaluate, or install a new"
+    },
+    "raven-security": {
+      "name": "raven-security",
+      "paths": [
+        "skills/raven-security"
+      ],
+      "owner": "raven-core-team",
+      "status": "active",
+      "purpose": "Use when doing security review of code, PRs, or before any merge."
+    },
+    "raven-sync": {
+      "name": "raven-sync",
+      "paths": [
+        "skills/raven-sync"
+      ],
+      "owner": "raven-core-team",
+      "status": "active",
+      "purpose": "Use when requirements.txt or pyproject.toml has changed and you"
+    },
+    "raven-test": {
+      "name": "raven-test",
+      "paths": [
+        "skills/raven-test"
+      ],
+      "owner": "raven-core-team",
+      "status": "active",
+      "purpose": "Use when writing or reviewing tests. Forces test-first discipline \u2014"
+    },
+    "redis-specialist": {
+      "name": "redis-specialist",
+      "paths": [
+        "skills/redis-specialist"
+      ],
+      "owner": "raven-core-team",
+      "status": "active",
+      "purpose": "Use for any Redis / Caching question. Assumes Antirez (Redis creator, Salvatore Sanfilippo) persona. Deep multi-dimensional analysis. Bullets not prose.",
+      "domain": "db",
+      "layering": "Leaf specialist under db-specialist routing."
+    },
+    "salesforce-specialist": {
+      "name": "salesforce-specialist",
+      "paths": [
+        "skills/salesforce-specialist"
+      ],
+      "owner": "raven-core-team",
+      "status": "active",
+      "purpose": "Use for any Salesforce question \u2014 Apex, SOQL, LWC, Flows, integrations,"
+    },
+    "security-specialist": {
+      "name": "security-specialist",
+      "paths": [
+        "skills/security-specialist"
+      ],
+      "owner": "raven-core-team",
+      "status": "active",
+      "purpose": "Use for any Application Security question. Assumes Bruce Schneier (security technologist) persona. Deep multi-dimensional analysis. Bullets not prose."
+    },
+    "task-observer": {
+      "name": "task-observer",
+      "paths": [
+        "skills/task-observer"
+      ],
+      "owner": "raven-core-team",
+      "status": "active",
+      "purpose": "Meta-skill. Loaded at every session start via CLAUDE.md boot sequence."
+    },
+    "terraform-specialist": {
+      "name": "terraform-specialist",
+      "paths": [
+        "skills/terraform-specialist"
+      ],
+      "owner": "raven-core-team",
+      "status": "active",
+      "purpose": "Use for any Terraform / IaC question. Assumes Mitchell Hashimoto (Terraform creator) persona. Deep multi-dimensional analysis. Bullets not prose."
+    },
+    "tools-landscape": {
+      "name": "tools-landscape",
+      "paths": [
+        "skills/tools-landscape"
+      ],
+      "owner": "raven-core-team",
+      "status": "active",
+      "purpose": "Tool and product registry for Andie pre-flight. Maps problem types to tool options with tradeoffs. Covers LLMs, vector DBs, streaming, orchestration, IaC, monitoring, secrets, CI/CD, search, auth, ope"
+    },
+    "ui-router": {
+      "name": "ui-router",
+      "paths": [
+        "skills/ui-router"
+      ],
+      "owner": "raven-core-team",
+      "status": "active",
+      "purpose": "Thin UI/UX and frontend router. Detects framework (React, Vue, Angular, JavaScript) and design intent. Routes to the right specialist. Design default is v0.dev or AI canvas tool \u2014 Figma ONLY when user"
+    },
+    "vault-specialist": {
+      "name": "vault-specialist",
+      "paths": [
+        "skills/vault-specialist"
+      ],
+      "owner": "raven-core-team",
+      "status": "active",
+      "purpose": "Use for any HashiCorp Vault / Secrets question. Assumes Armon Dadgar (Vault creator) persona. Deep multi-dimensional analysis. Bullets not prose."
+    },
+    "vector-db-specialist": {
+      "name": "vector-db-specialist",
+      "paths": [
+        "skills/vector-db-specialist"
+      ],
+      "owner": "raven-core-team",
+      "status": "active",
+      "purpose": "Use for any Vector Databases / Search question. Assumes Dmitry Baranchuk (HNSW researcher) persona. Deep multi-dimensional analysis. Bullets not prose.",
+      "domain": "db",
+      "layering": "Leaf specialist under db-specialist routing."
+    },
+    "workflow-specialist": {
+      "name": "workflow-specialist",
+      "paths": [
+        "skills/workflow-specialist"
+      ],
+      "owner": "raven-core-team",
+      "status": "active",
+      "purpose": "Use for workflow orchestration, deterministic flows, and pipeline design. Sub-modes \u2014 event-driven \u00b7 dag-based \u00b7 durable-execution. Assumes Ben Stopford (Confluent, distributed systems) persona. Bulle"
+    },
+    "router": {
+      "name": "router",
+      "paths": [
+        ".claude/skills/router"
+      ],
+      "owner": "raven-core-team",
+      "status": "active",
+      "purpose": "Toggle the Raven model router. /router enables advisory Haiku-subagent delegation for simple prompts, /router off disables it, /router status shows the current mode. The primary session model is never"
+    }
+  }
+}
