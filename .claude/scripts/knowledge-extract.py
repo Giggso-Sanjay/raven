@@ -1,1 +1,1 @@
-/Users/giggso/AntiGravity_Projects/SHAY-ROLLS/CLAUDE/RAVEN/scripts/knowledge-extract.py
+../../scripts/knowledge-extract.py

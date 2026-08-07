@@ -1,0 +1,23 @@
+name: Raven Discipline
+
+# The discipline engine applied to itself: these checks enforce the same
+# anti-drift rules Raven enforces on user projects. Added by the fix chain
+# (Prompt 1); later prompts append further jobs (docs-reality, config-canon).
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  raven-engine-drift-check:
+    name: raven-engine-drift-check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Engine drift check (scripts/ vs raven-core/ vs .claude/scripts/)
+        run: python3 scripts/check-engine-drift.py

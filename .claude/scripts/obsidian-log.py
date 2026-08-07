@@ -1,1 +1,1 @@
-/Users/giggso/AntiGravity_Projects/SHAY-ROLLS/CLAUDE/RAVEN/scripts/obsidian-log.py
+../../scripts/obsidian-log.py

@@ -1,1 +1,1 @@
-/Users/giggso/AntiGravity_Projects/SHAY-ROLLS/CLAUDE/RAVEN/scripts/vault-load.py
+../../scripts/vault-load.py

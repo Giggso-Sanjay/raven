@@ -1,1 +1,1 @@
-/Users/giggso/AntiGravity_Projects/SHAY-ROLLS/CLAUDE/RAVEN/raven-core/emit-violation.py
+../../scripts/emit-violation.py

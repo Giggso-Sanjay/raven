@@ -1,1 +1,1 @@
-/Users/giggso/AntiGravity_Projects/SHAY-ROLLS/CLAUDE/RAVEN/scripts/knowledge_graph.py
+../../scripts/knowledge_graph.py
