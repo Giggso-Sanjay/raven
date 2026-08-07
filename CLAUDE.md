@@ -87,8 +87,8 @@ These are the **real Claude Code hooks** wired in this project. `PostEdit` and `
 |---|---|---|
 | `SessionStart` | New Claude session opens | `session-start.py` — brownfield/greenfield, models, manifest; embeds `vault-load.py` digest · plus `vault-load.py --hook` |
 | `UserPromptSubmit` | Every user message arrives | `triage-router.py` → `architect-router.py` → `model-router.py` → `cve-prompt-guard.py` |
-| `PostToolUse` (matcher: `Write\|Edit\|MultiEdit`) | After any file write/edit | `secret-scan.py` + `db-guard.py` (async) |
-| `Stop` | Session ends | `token-guard.py` + `obsidian-log.py` (hub + trimmed session) + `knowledge-extract.py` (async) |
+| `PostToolUse` (matcher: `Write\|Edit\|MultiEdit`) | After any file write/edit | `db-guard.py` (reads hook stdin natively) + `secret-scan.py` `--changed-files-only` (async) |
+| `Stop` | Fires at the end of every turn (not just session end) | `token-meter-write.py` → `token-guard.py` → `dashboard.py` `--if-stale 15` → `raven-xray.py` `--build --if-stale 15` → `obsidian-log.py` → `knowledge-extract.py` → `session-gate.py` (all async) |
 
 **Git-level (NOT a Claude Code hook):**
 
