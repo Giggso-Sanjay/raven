@@ -37,6 +37,9 @@ __pycache__/
 .raven/xray.json
 .raven/xray-stamp.json
 .raven/.router-state.json
+.raven/.push-mode
+.raven/.push-approved
+.raven/.push-notice-shown
 .raven/cost-log.jsonl
 scripts/.raven/
 

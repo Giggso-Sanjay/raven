@@ -48,20 +48,15 @@ After any non-trivial action, end with what changed and what's next. No silent c
 
 ---
 
-## ✋ Educated Push Contract — HARD-ENFORCED by hooks
+## ✋ Educated Push Contract — ADVISORY (educational, never blocking)
 
-Every change cycle follows this loop. It is **mechanically enforced** by
-`push-gate.py` (PreToolUse) + `push-approve.py` (UserPromptSubmit) — Claude
-physically cannot write files or run mutating Bash without a fresh go-ahead.
+Every change cycle should follow this loop. It is **taught, not enforced**:
+`push-gate.py` (PreToolUse) shows a one-time reminder on the first mutating
+action of each session, then allows everything. It never denies a tool call
+(user decision 2026-08-07: "educated is educational — it should not block").
+The one-time marker is `.raven/.push-notice-shown`, wiped at SessionStart.
 
-**Session modes** — on the FIRST mutating action of a session, the gate makes
-Claude show a 5-line sample of the loop and ask the user to pick:
-- `guided` → full contract below (the default expectation)
-- `auto` → gate stays open all session, no briefings — user owns risk
-The choice lives in `.raven/.push-mode` and is wiped at every SessionStart, so
-each session gets asked exactly once.
-
-The guided loop:
+The loop Claude is expected to follow for non-trivial changes:
 
 1. **Briefing (max 200 words, bullets)** — before ANY change: WHAT will be
    done, HOW it works, WHAT will change (files, db, config). Then STOP.

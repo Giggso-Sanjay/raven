@@ -64,7 +64,7 @@
           },
           {
             "type": "command",
-            "command": "rm -f \"${CLAUDE_PROJECT_DIR:-.}/.raven/.push-mode\" \"${CLAUDE_PROJECT_DIR:-.}/.raven/.push-approved\"",
+            "command": "rm -f \"${CLAUDE_PROJECT_DIR:-.}/.raven/.push-mode\" \"${CLAUDE_PROJECT_DIR:-.}/.raven/.push-approved\" \"${CLAUDE_PROJECT_DIR:-.}/.raven/.push-notice-shown\"",
             "timeout": 5,
             "async": false
           }
