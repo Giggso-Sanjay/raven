@@ -1,52 +1,47 @@
 {
   "hooks": {
-    "SessionStart": [
-      {
-        "matcher": "*",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/scripts/session-start.py\"",
-            "timeout": 10
-          }
-        ]
-      }
-    ],
     "UserPromptSubmit": [
       {
         "matcher": "*",
         "hooks": [
           {
             "type": "command",
-            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/scripts/triage-router.py\" 2>/dev/null || true",
-            "timeout": 3
+            "timeout": 10,
+            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/scripts/triage-router.py\" 2>/dev/null || true"
           },
           {
             "type": "command",
-            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/scripts/architect-router.py\" 2>/dev/null || true",
-            "timeout": 3
+            "timeout": 10,
+            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/scripts/architect-router.py\" 2>/dev/null || true"
           },
           {
             "type": "command",
-            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/scripts/model-router.py\" --prompt \"$PROMPT\" --write-json --hook 2>/dev/null || true",
-            "timeout": 5
+            "timeout": 10,
+            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/scripts/model-router.py\" 2>/dev/null || true"
           },
           {
             "type": "command",
-            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/scripts/cve-prompt-guard.py\" 2>/dev/null || true",
-            "async": true
+            "timeout": 10,
+            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/scripts/cve-prompt-guard.py\" 2>/dev/null || true"
           }
         ]
       }
     ],
-    "PreToolUse": [
+    "SessionStart": [
       {
-        "matcher": "Edit|Write|MultiEdit|NotebookEdit",
+        "matcher": "*",
         "hooks": [
           {
             "type": "command",
-            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/scripts/raven-skill-gate.py\"",
-            "timeout": 3
+            "timeout": 10,
+            "async": false,
+            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/scripts/session-start.py\" 2>/dev/null || true"
+          },
+          {
+            "type": "command",
+            "timeout": 5,
+            "async": false,
+            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/scripts/vault-load.py\" 2>/dev/null || true"
           }
         ]
       }
@@ -57,13 +52,13 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/scripts/secret-scan.py\" 2>/dev/null || true",
-            "async": true
+            "async": true,
+            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/scripts/db-guard.py\" 2>/dev/null || true"
           },
           {
             "type": "command",
-            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/scripts/db-guard.py\" 2>/dev/null || true",
-            "async": true
+            "async": true,
+            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/scripts/secret-scan.py\" 2>/dev/null || true"
           }
         ]
       }
@@ -74,16 +69,42 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/scripts/token-guard.py\" 2>/dev/null || true",
-            "async": true
+            "async": true,
+            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/scripts/token-meter-write.py\" 2>/dev/null || true"
           },
           {
             "type": "command",
-            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/scripts/obsidian-log.py\" 2>/dev/null || true",
-            "async": true
+            "async": true,
+            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/scripts/token-guard.py\" 2>/dev/null || true"
+          },
+          {
+            "type": "command",
+            "async": true,
+            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/scripts/dashboard.py\" 2>/dev/null || true"
+          },
+          {
+            "type": "command",
+            "async": true,
+            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/scripts/raven-xray.py\" 2>/dev/null || true"
+          },
+          {
+            "type": "command",
+            "async": true,
+            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/scripts/obsidian-log.py\" 2>/dev/null || true"
+          },
+          {
+            "type": "command",
+            "async": true,
+            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/scripts/knowledge-extract.py\" 2>/dev/null || true"
+          },
+          {
+            "type": "command",
+            "async": true,
+            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/scripts/session-gate.py\" 2>/dev/null || true"
           }
         ]
       }
     ]
-  }
+  },
+  "_generated": "GENERATED from .claude/settings.json by scripts/export-hook-configs.py \u2014 do not hand-edit; run the exporter after changing the canonical file."
 }

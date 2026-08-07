@@ -1,13 +1,44 @@
 {
+  "_generated": "GENERATED from .claude/settings.json by scripts/export-hook-configs.py \u2014 do not hand-edit; run the exporter after changing the canonical file.",
+  "version": "1.0",
+  "description": "Raven v3.0 \u2014 Automated governance gate via Andie",
   "hooks": {
+    "UserPromptSubmit": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"${CLAUDE_PROJECT_DIR:-.}/.claude/scripts/triage-router.py\" 2>/dev/null || python3 \"${CLAUDE_PROJECT_DIR:-.}/scripts/triage-router.py\" 2>/dev/null || true",
+            "timeout": 10
+          },
+          {
+            "type": "command",
+            "command": "python3 \"${CLAUDE_PROJECT_DIR:-.}/.claude/scripts/architect-router.py\" 2>/dev/null || python3 \"${CLAUDE_PROJECT_DIR:-.}/scripts/architect-router.py\" 2>/dev/null || true",
+            "timeout": 10
+          },
+          {
+            "type": "command",
+            "command": "python3 \"${CLAUDE_PROJECT_DIR:-.}/.claude/scripts/model-router.py\" --hook 2>/dev/null || python3 \"${CLAUDE_PROJECT_DIR:-.}/scripts/model-router.py\" --hook 2>/dev/null || true",
+            "timeout": 10
+          },
+          {
+            "type": "command",
+            "command": "python3 \"${CLAUDE_PROJECT_DIR:-.}/.claude/scripts/cve-prompt-guard.py\" 2>/dev/null || python3 \"${CLAUDE_PROJECT_DIR:-.}/scripts/cve-prompt-guard.py\" 2>/dev/null || true",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
     "SessionStart": [
       {
         "matcher": "*",
         "hooks": [
           {
             "type": "command",
-            "command": "python3 \"${CLAUDE_PROJECT_DIR:-.}/.claude/scripts/session-start.py\"",
-            "timeout": 10
+            "command": "python3 \"${CLAUDE_PROJECT_DIR:-.}/.claude/scripts/session-start.py\" 2>/dev/null || python3 \"${CLAUDE_PROJECT_DIR:-.}/scripts/session-start.py\" 2>/dev/null || true",
+            "timeout": 10,
+            "async": false
           },
           {
             "type": "command",
@@ -18,57 +49,18 @@
         ]
       }
     ],
-    "UserPromptSubmit": [
-      {
-        "matcher": "*",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "python3 \"${CLAUDE_PROJECT_DIR:-.}/.claude/scripts/triage-router.py\" 2>/dev/null || true",
-            "timeout": 3
-          },
-          {
-            "type": "command",
-            "command": "python3 \"${CLAUDE_PROJECT_DIR:-.}/.claude/scripts/architect-router.py\" 2>/dev/null || true",
-            "timeout": 3
-          },
-          {
-            "type": "command",
-            "command": "python3 \"${CLAUDE_PROJECT_DIR:-.}/.claude/scripts/model-router.py\" --prompt \"$PROMPT\" --write-json --hook 2>/dev/null || true",
-            "timeout": 5
-          },
-          {
-            "type": "command",
-            "command": "python3 \"${CLAUDE_PROJECT_DIR:-.}/.claude/scripts/cve-prompt-guard.py\" 2>/dev/null || true",
-            "async": true
-          }
-        ]
-      }
-    ],
-    "PreToolUse": [
-      {
-        "matcher": "Edit|Write|MultiEdit|NotebookEdit",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "python3 \"${CLAUDE_PROJECT_DIR:-.}/.claude/scripts/raven-skill-gate.py\"",
-            "timeout": 3
-          }
-        ]
-      }
-    ],
     "PostToolUse": [
       {
         "matcher": "Write|Edit|MultiEdit",
         "hooks": [
           {
             "type": "command",
-            "command": "python3 \"${CLAUDE_PROJECT_DIR:-.}/.claude/scripts/secret-scan.py\" 2>/dev/null || true",
+            "command": "python3 \"${CLAUDE_PROJECT_DIR:-.}/.claude/scripts/db-guard.py\" 2>/dev/null || python3 \"${CLAUDE_PROJECT_DIR:-.}/scripts/db-guard.py\" 2>/dev/null || true",
             "async": true
           },
           {
             "type": "command",
-            "command": "python3 \"${CLAUDE_PROJECT_DIR:-.}/.claude/scripts/db-guard.py\" 2>/dev/null || true",
+            "command": "python3 \"${CLAUDE_PROJECT_DIR:-.}/.claude/scripts/secret-scan.py\" --changed-files-only </dev/null 2>/dev/null || python3 \"${CLAUDE_PROJECT_DIR:-.}/scripts/secret-scan.py\" --changed-files-only </dev/null 2>/dev/null || true",
             "async": true
           }
         ]
@@ -90,7 +82,17 @@
           },
           {
             "type": "command",
-            "command": "python3 \"${CLAUDE_PROJECT_DIR:-.}/.claude/scripts/obsidian-log.py\" 2>/dev/null || true",
+            "command": "python3 \"${CLAUDE_PROJECT_DIR:-.}/.claude/scripts/dashboard.py\" --html --current-project --if-stale 15 2>/dev/null || python3 \"${CLAUDE_PROJECT_DIR:-.}/scripts/dashboard.py\" --html --current-project --if-stale 15 2>/dev/null || true",
+            "async": true
+          },
+          {
+            "type": "command",
+            "command": "python3 \"${CLAUDE_PROJECT_DIR:-.}/.claude/scripts/raven-xray.py\" --build --if-stale 15 2>/dev/null || python3 \"${CLAUDE_PROJECT_DIR:-.}/scripts/raven-xray.py\" --build --if-stale 15 2>/dev/null || true",
+            "async": true
+          },
+          {
+            "type": "command",
+            "command": "python3 \"${CLAUDE_PROJECT_DIR:-.}/.claude/scripts/obsidian-log.py\" 2>/dev/null || python3 \"${CLAUDE_PROJECT_DIR:-.}/scripts/obsidian-log.py\" 2>/dev/null || true",
             "async": true
           },
           {
@@ -105,6 +107,33 @@
           }
         ]
       }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "Skill",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"${CLAUDE_PROJECT_DIR:-.}/scripts/raven-skill-gate.py\" 2>/dev/null || true"
+          }
+        ]
+      }
     ]
+  },
+  "permissions": {
+    "bash": [
+      "git",
+      "python3"
+    ],
+    "mcp": [
+      "raven-core",
+      "raven-review",
+      "raven-security"
+    ]
+  },
+  "governance": {
+    "enforcement": "mandatory",
+    "andie_gate": "automatic",
+    "fallback": "prompt-start"
   }
 }
