@@ -29,8 +29,20 @@ from email.mime.text import MIMEText
 from pathlib import Path
 from datetime import datetime, timezone
 
-SECRETS_PATH = Path(".raven/manifest.secrets.json")
-AUDIT_DIR = Path(".raven/audit")
+def _find_project_root() -> Path:
+    """Anchor to the repo root via .git — a cwd-relative secrets path meant
+    dry-run mode could trigger just because the hook ran from a subdirectory,
+    silently believing no secrets existed."""
+    d = Path.cwd()
+    for candidate in (d, *d.parents):
+        if (candidate / ".git").is_dir():
+            return candidate
+    return d
+
+
+_ROOT = _find_project_root()
+SECRETS_PATH = _ROOT / ".raven" / "manifest.secrets.json"
+AUDIT_DIR = _ROOT / ".raven" / "audit"
 
 
 def load_secrets() -> dict:
@@ -151,8 +163,15 @@ def send_slack(secrets: dict, event: str, payload: dict) -> tuple[bool, str]:
 
 
 def dry_run(event: str, payload: dict) -> None:
-    """Print what would have been sent when secrets are missing."""
-    print("─" * 60, file=sys.stderr)
+    """Print what would have been sent when secrets are missing — LOUDLY.
+
+    Fail-soft must never be mistaken for success: someone reading a commit
+    log could otherwise believe an alert fired when nothing was sent.
+    """
+    print("═" * 60, file=sys.stderr)
+    print("⚠️  DEGRADED: notifications running in DRY-RUN mode", file=sys.stderr)
+    print("⚠️  No secrets configured — NOTHING WAS ACTUALLY SENT", file=sys.stderr)
+    print("═" * 60, file=sys.stderr)
     print(f"🪶 Raven notify — DRY RUN (no .raven/manifest.secrets.json)", file=sys.stderr)
     print("─" * 60, file=sys.stderr)
     print(f"Subject: {render_subject(event, payload.get('project', 'raven'))}", file=sys.stderr)
@@ -164,6 +183,14 @@ def dry_run(event: str, payload: dict) -> None:
 
 
 def main() -> None:
+    # --status: health probe for session-start (PASS/DEGRADED, exit code 0/1)
+    if "--status" in sys.argv:
+        if SECRETS_PATH.exists():
+            print("notify: PASS — secrets configured, sends are real")
+            sys.exit(0)
+        print("notify: DEGRADED — dry-run only, no secrets configured, nothing will actually send")
+        sys.exit(1)
+
     parser = argparse.ArgumentParser(description="Raven notification sender")
     parser.add_argument("--event", required=True,
                         choices=["commit", "block", "override", "token-warning", "incident"])

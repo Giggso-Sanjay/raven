@@ -8,7 +8,7 @@ Outputs JSON with additionalContext — consumed by Claude Code SessionStart hoo
 Never prompts interactively. Never reads .env or credential files.
 """
 
-import json, os, subprocess, sys, urllib.request, urllib.error
+import json, os, re, subprocess, sys, urllib.request, urllib.error
 from pathlib import Path
 
 
@@ -324,6 +324,9 @@ def discover_cloud() -> list[dict]:
     return found
 
 
+EMBED_ONLY_PATTERN = re.compile(r"embed|minilm|bge-|e5-|reranker", re.IGNORECASE)
+
+
 def discover_local() -> list[dict]:
     found = []
     for name, endpoint in LOCAL_PROVIDERS.items():
@@ -336,6 +339,10 @@ def discover_local() -> list[dict]:
                 models = [m["name"] for m in data.get("models", [])]
             elif name == "lmstudio":
                 models = [m["id"] for m in data.get("data", [])]
+            # Embedding/reranker models cannot generate text — routing one as
+            # a chat tier is nonsense (this happened: nomic-embed-text was
+            # once auto-picked for every tier because it listed first).
+            models = [m for m in models if not EMBED_ONLY_PATTERN.search(m)]
             if models:
                 found.append({
                     "provider": name,
@@ -370,6 +377,36 @@ def build_routing(providers: list[dict]) -> dict:
         "MEDIUM":     fmt(medium_pick),
         "COMPLEX":    fmt(complex_pick),
     }
+
+
+def validate_routing(routing: dict) -> list[str]:
+    """Per-tier PASS/FAIL self-check: is the routed model text-gen capable?
+
+    Catches the embedding-model-as-chat-tier regression class visibly at
+    session start instead of failing silently mid-session.
+    """
+    lines = ["🔎 Routing self-check:"]
+    for tier in ("LOCAL_ONLY", "SIMPLE", "MEDIUM", "COMPLEX"):
+        target = routing.get(tier, "")
+        model = target.split("/", 1)[-1] if "/" in target else target
+        if not target:
+            lines.append(f"   {tier:11s} FAIL — no model configured")
+        elif EMBED_ONLY_PATTERN.search(model):
+            lines.append(f"   {tier:11s} FAIL — {target} is an embedding model (cannot generate text)")
+        elif any(banned in model.lower() for banned in ("opus", "fable")):
+            lines.append(f"   {tier:11s} FAIL — {target} violates Rule 8 (no auto-Opus/Fable)")
+        else:
+            lines.append(f"   {tier:11s} PASS — {target}")
+    return lines
+
+
+def notify_status_line() -> str:
+    """Visible notification health: PASS (secrets present) or DEGRADED."""
+    secrets = find_project_root() / ".raven" / "manifest.secrets.json"
+    if secrets.exists():
+        return "✉️  Notifications: PASS — secrets configured, sends are real"
+    return ("⚠️  Notifications: DEGRADED — dry-run only (no .raven/manifest.secrets.json); "
+            "emails/Slack will NOT actually send")
 
 
 def write_model_env(providers: list[dict], routing: dict):
@@ -615,6 +652,15 @@ def main():
 
     # 6. Format context string
     context = format_context(project, all_providers, routing, model_env_written, domain_skill)
+
+    # 6-pre. Visible health checks: routing validity + notification mode.
+    # PASS/FAIL lines, not raw config dumps — silence is how the
+    # nomic-embed-tier and believed-but-unsent-alert bugs survived.
+    try:
+        health_lines = validate_routing(routing) + [notify_status_line()]
+        context = context + "\n\n" + "\n".join(health_lines)
+    except Exception:
+        pass
 
     # 6a. Dashboard link ALWAYS first (human-visible map of memory + costs)
     try:
