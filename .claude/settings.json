@@ -18,7 +18,7 @@
           },
           {
             "type": "command",
-            "command": "python3 \"${CLAUDE_PROJECT_DIR:-.}/.claude/scripts/model-router.py\" 2>/dev/null || python3 \"${CLAUDE_PROJECT_DIR:-.}/scripts/model-router.py\" 2>/dev/null || true",
+            "command": "python3 \"${CLAUDE_PROJECT_DIR:-.}/.claude/scripts/model-router.py\" --hook 2>/dev/null || python3 \"${CLAUDE_PROJECT_DIR:-.}/scripts/model-router.py\" --hook 2>/dev/null || true",
             "timeout": 10
           },
           {
@@ -65,6 +65,11 @@
           {
             "type": "command",
             "command": "python3 \"${CLAUDE_PROJECT_DIR:-.}/.claude/scripts/dashboard.py\" --html --current-project --if-stale 15 2>/dev/null || python3 \"${CLAUDE_PROJECT_DIR:-.}/scripts/dashboard.py\" --html --current-project --if-stale 15 2>/dev/null || true",
+            "async": true
+          },
+          {
+            "type": "command",
+            "command": "python3 \"${CLAUDE_PROJECT_DIR:-.}/.claude/scripts/raven-xray.py\" --build --if-stale 15 2>/dev/null || python3 \"${CLAUDE_PROJECT_DIR:-.}/scripts/raven-xray.py\" --build --if-stale 15 2>/dev/null || true",
             "async": true
           },
           {

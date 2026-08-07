@@ -308,6 +308,9 @@ def write_session_json(tier: str, score: int, reasons: List[str], model: str, pr
             "score": score,
             "reasons": reasons,
             "model_for_tier": model,
+            # prompt length feeds the cost-log's pre-turn estimate column
+            # (est tokens ≈ chars/4) — the hash alone can't reconstruct size
+            "prompt_chars": len(prompt),
         }
 
     # Write atomically
@@ -319,11 +322,37 @@ def write_session_json(tier: str, score: int, reasons: List[str], model: str, pr
         raise
 
 
+ROUTER_STATE_FILE = ".router-state.json"
+
+
+def _router_state_path() -> Path:
+    return _find_project_root() / ".raven" / ROUTER_STATE_FILE
+
+
+def load_router_state() -> Dict:
+    try:
+        p = _router_state_path()
+        if p.exists():
+            return json.loads(p.read_text())
+    except Exception:
+        pass
+    return {"mode": "default", "session_id": "", "announced": False}
+
+
+def save_router_state(state: Dict) -> None:
+    try:
+        p = _router_state_path()
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_text(json.dumps(state, indent=2))
+    except Exception as e:
+        print(f"Warning: failed to write router state: {e}", file=sys.stderr)
+
+
 def main():
     parser = argparse.ArgumentParser(
         description="Classify query into model tier (SIMPLE/MEDIUM/COMPLEX/LOCAL_ONLY)"
     )
-    parser.add_argument("--prompt", required=True, help="User query text")
+    parser.add_argument("--prompt", default=None, help="User query text (optional in --hook mode: read from stdin)")
     parser.add_argument("--context", default="", help="Additional context (JSON or text)")
     parser.add_argument("--write-json", action="store_true", help="Write result to .raven/.model-session.json")
     parser.add_argument("--hook", action="store_true",
@@ -332,8 +361,45 @@ def main():
     parser.add_argument("--source", default="user_work",
                         choices=["user_work", "raven_overhead"],
                         help="Attribution bucket: user_work (default) or raven_overhead")
+    parser.add_argument("--enable", action="store_true", help="Turn router mode ON (delegation directives active)")
+    parser.add_argument("--disable", action="store_true", help="Turn router mode OFF (session default model only)")
+    parser.add_argument("--status", action="store_true", help="Show router mode and state")
 
     args = parser.parse_args()
+
+    # Mode toggles — used by the /router skill, not the hook
+    if args.enable or args.disable or args.status:
+        state = load_router_state()
+        if args.enable:
+            state["mode"] = "router"
+            save_router_state(state)
+            print("🔀 Raven router: ON — SIMPLE prompts will carry a delegation "
+                  "directive (Haiku subagent via Agent tool). The primary session "
+                  "model is unchanged — Claude Code has no per-turn model swap.")
+        elif args.disable:
+            state["mode"] = "default"
+            save_router_state(state)
+            print("Raven router: OFF — all prompts run on the session's default model.")
+        else:
+            print(json.dumps(load_router_state(), indent=2))
+        return 0
+
+    # Hook mode gets prompt + session_id from stdin (Claude Code hook payload).
+    # This was the fatal wiring bug: settings.json invokes this script with no
+    # arguments, and --prompt used to be required=True — argparse exited 2 on
+    # every single UserPromptSubmit and `|| true` swallowed it, so the router
+    # never actually ran from the hook. stdin is the only channel the hook has.
+    hook_session_id = ""
+    if args.hook and args.prompt is None:
+        try:
+            payload = json.load(sys.stdin) if not sys.stdin.isatty() else {}
+        except Exception:
+            payload = {}
+        args.prompt = payload.get("prompt", "") or ""
+        hook_session_id = payload.get("session_id", "") or ""
+
+    if args.prompt is None:
+        parser.error("--prompt is required outside --hook mode")
 
     # Method B inference — if called from a hook context, override to overhead
     # CLAUDE_HOOK_EVENT is set by Claude Code when a hook fires
@@ -346,10 +412,13 @@ def main():
     # Classify
     tier, score, reasons, model = classify(args.prompt, args.context)
 
-    # Optionally write to session file
-    if args.write_json:
+    # Persist the classification in hook mode too — the cost log's pre-turn
+    # estimate column reads last_classification from .model-session.json, so
+    # a hook run that classifies but never records would starve it.
+    if args.write_json or args.hook:
         session_file = write_session_json(tier, score, reasons, model, args.prompt, source=args.source)
-        print(f"# Written to {session_file} (bucket: {args.source})", file=sys.stderr)
+        if args.write_json:
+            print(f"# Written to {session_file} (bucket: {args.source})", file=sys.stderr)
 
     if args.hook:
         # Hook mode: one-line toaster the user actually sees + context for the
@@ -363,6 +432,41 @@ def main():
         # conversation turns, no file reads/tool calls needed). This is
         # advisory, not enforced — Claude may still answer directly if
         # delegating would lose necessary context.
+        state = load_router_state()
+        router_on = state.get("mode") == "router"
+
+        # First prompt of a NEW session: disclose the session model and offer
+        # the router, instead of silently classifying. The hook cannot see
+        # which model the session runs on (Claude Code doesn't expose it here)
+        # — but Claude knows its own model, so the disclosure is delegated to
+        # Claude via additionalContext.
+        if hook_session_id and hook_session_id != state.get("session_id"):
+            state["session_id"] = hook_session_id
+            state["announced"] = True
+            save_router_state(state)
+            mode_word = "ON" if router_on else "OFF"
+            print(json.dumps({
+                "systemMessage": f"🪶 Raven · model disclosure due — router is {mode_word}",
+                "hookSpecificOutput": {
+                    "hookEventName": "UserPromptSubmit",
+                    "additionalContext": (
+                        "[RAVEN MODEL DISCLOSURE — first prompt of this session] "
+                        "Before answering, tell the user in 2-3 sentences: "
+                        "(1) which model this session is running on (state your own model name — the session default set via /model); "
+                        f"(2) Raven's model router is currently {mode_word}. When ON, prompts classified as simple carry an advisory directive to delegate to a cheaper Haiku subagent via the Agent tool — the primary session model NEVER changes (Claude Code has no per-turn model swap; do not claim otherwise); "
+                        "(3) they can say /router to enable it, /router off to disable, /router status to check. "
+                        "Then answer their prompt normally."
+                    ),
+                },
+            }))
+            return 0
+
+        # Router OFF (default): stay silent — no toast, no delegation nudges.
+        # The one exception is the secrets guard: LOCAL_ONLY still warns,
+        # because that's a security signal, not a routing preference.
+        if not router_on and tier != "LOCAL_ONLY":
+            return 0
+
         if tier == "LOCAL_ONLY":
             toast = "🔒 Raven router · secrets detected → LOCAL_ONLY · cloud subagents blocked, local model only"
         elif tier == "SIMPLE":

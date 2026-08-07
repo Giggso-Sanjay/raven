@@ -125,6 +125,7 @@ def parse_transcript(transcript_path: str) -> Dict[str, Any]:
             "cost_usd": 0.0,
             "calls": 0,
         },
+        "by_model": {},  # model -> per-model delta usage, feeds the cost log
         "_new_line_count": 0,
     }
     pricing = load_pricing()
@@ -205,7 +206,24 @@ def parse_transcript(transcript_path: str) -> Dict[str, Any]:
                         cache_creation_cost = (cache_creation / 1_000_000) * (
                             pricing.get(model, {}).get("input_per_1m", 1) * 1.25
                         )
-                        bucket["cost_usd"] += cost + cache_read_cost + cache_creation_cost
+                        msg_cost = cost + cache_read_cost + cache_creation_cost
+                        bucket["cost_usd"] += msg_cost
+
+                        # Per-model delta — one cost-log row per model per turn.
+                        # Multiple models appear only when subagents with model
+                        # overrides ran this turn; the transcript is the sole
+                        # honest source of that signal.
+                        pm = metrics["by_model"].setdefault(model, {
+                            "tokens_in": 0, "tokens_out": 0,
+                            "cache_read": 0, "cache_creation": 0,
+                            "cost_usd": 0.0, "calls": 0,
+                        })
+                        pm["tokens_in"] += input_tokens
+                        pm["tokens_out"] += output_tokens
+                        pm["cache_read"] += cache_read
+                        pm["cache_creation"] += cache_creation
+                        pm["cost_usd"] += msg_cost
+                        pm["calls"] += 1
 
                 except Exception as e:
                     sys.stderr.write(f"Warning: Failed to parse message: {e}\n")
@@ -461,6 +479,107 @@ def write_audit_log(metrics: Dict[str, Any]) -> bool:
         return False
 
 
+COST_LOG = RAVEN_DIR / "cost-log.jsonl"
+
+
+def _read_estimate() -> Optional[Dict[str, Any]]:
+    """Pre-turn estimate from model-router's last classification, if any.
+
+    est tokens ≈ prompt_chars/4 input + a nominal 500-token reply, priced at
+    the tier model's rates. Clearly an estimate — never merged with computed.
+    Returns None when no classification is available; the log row then shows
+    est_cost_usd: null rather than a fabricated number.
+    """
+    try:
+        session = json.loads((RAVEN_DIR / ".model-session.json").read_text())
+        lc = (session.get("user_work") or {}).get("last_classification") or {}
+        model_str = lc.get("model_for_tier", "")
+        prompt_chars = lc.get("prompt_chars")
+        if not model_str or prompt_chars is None:
+            return None
+        model = model_str.split("/", 1)[-1]
+        pricing = load_pricing()
+        est_in = prompt_chars / 4
+        est_out = 500
+        return {
+            "tier": lc.get("tier"),
+            "model": model_str,
+            "est_cost_usd": get_cost(model, int(est_in), est_out, pricing),
+        }
+    except Exception:
+        return None
+
+
+def write_cost_log(metrics: Dict[str, Any]) -> bool:
+    """Append one row per model actually observed this turn to cost-log.jsonl.
+
+    Honest-accounting rules:
+      - Rows exist ONLY for models seen in the transcript delta. Raven's hook
+        scripts (triage/architect/model-router/cve-guard) make zero API calls
+        and cost $0 — they never get rows. (The old by_source overhead numbers
+        were fiction: nothing ever computed them.)
+      - "primary" = the model with the most calls in this turn's delta;
+        any other model means a subagent ran — tagged "subagent".
+      - est_cost_usd is the router's pre-turn guess (may be null);
+        computed_cost_usd is real token usage x pricing. Never merged.
+      - cum_session_usd / cum_month_usd are running sums of computed cost,
+        derived from this same log file — one source of truth.
+    """
+    by_model = metrics.get("by_model") or {}
+    if not by_model:
+        return True  # nothing ran this turn — no fake rows
+
+    try:
+        RAVEN_DIR.mkdir(parents=True, exist_ok=True)
+        session_id = metrics.get("session_id", "")
+        month_prefix = metrics["timestamp"][:7]  # YYYY-MM
+
+        cum_session = 0.0
+        cum_month = 0.0
+        if COST_LOG.exists():
+            for line in COST_LOG.read_text().splitlines():
+                try:
+                    row = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                c = float(row.get("computed_cost_usd") or 0)
+                if row.get("ts", "").startswith(month_prefix):
+                    cum_month += c
+                if session_id and row.get("session_id") == session_id:
+                    cum_session += c
+
+        estimate = _read_estimate()
+        primary_model = max(by_model, key=lambda m: by_model[m]["calls"])
+
+        rows = []
+        for model, pm in by_model.items():
+            cum_session += pm["cost_usd"]
+            cum_month += pm["cost_usd"]
+            rows.append({
+                "ts": metrics["timestamp"],
+                "session_id": session_id,
+                "model": model,
+                "source": "primary" if model == primary_model else "subagent",
+                "tokens_in": pm["tokens_in"],
+                "tokens_out": pm["tokens_out"],
+                "cache_read": pm["cache_read"],
+                "cache_creation": pm["cache_creation"],
+                "est_cost_usd": (estimate or {}).get("est_cost_usd"),
+                "est_tier": (estimate or {}).get("tier"),
+                "computed_cost_usd": round(pm["cost_usd"], 6),
+                "cum_session_usd": round(cum_session, 6),
+                "cum_month_usd": round(cum_month, 6),
+            })
+
+        with open(COST_LOG, "a") as f:
+            for row in rows:
+                f.write(json.dumps(row) + "\n")
+        return True
+    except Exception as e:
+        sys.stderr.write(f"Warning: Failed to write cost log: {e}\n")
+        return False
+
+
 def main() -> None:
     """Read Stop hook stdin, parse transcript, write metrics."""
     try:
@@ -479,10 +598,11 @@ def main() -> None:
     metrics["project"] = _resolve_project_name()
     new_line_count = metrics.pop("_new_line_count", 0)
 
-    # Write all three atomically
+    # Write all four atomically
     write_session_json(metrics)
     write_monthly_rollup(metrics)
     write_audit_log(metrics)
+    write_cost_log(metrics)
 
     # Only advance the checkpoint after a successful parse, so a transient
     # read failure doesn't silently skip real usage on the next run.

@@ -2535,6 +2535,170 @@ def render_knowledge_graph_section(
 
 
 # ── Renderer: Static HTML ─────────────────────────────────────────────────────
+def render_code_map_section(metadata: dict) -> str:
+    """🗺️ Code Map — symbol/call structure from raven-xray.py's xray.json.
+
+    Deliberately NOT merged into the memory graph canvas above: 700+ code
+    symbols would drown ~25 memory nodes. Point queries + hotspots only.
+    """
+    xray_path = RAVEN_DIR / "xray.json"
+    if not xray_path.exists():
+        return (
+            '<h2 id="code-map">🗺️ Code Map</h2>'
+            '<div class="meta">Not built yet — it builds automatically at the end of the '
+            'next session (Stop hook, throttled). Python symbols, callers, and blast-radius '
+            'queries will appear here.</div>'
+        )
+    try:
+        cmap = json.loads(xray_path.read_text())
+    except Exception as e:
+        return f'<h2 id="code-map">🗺️ Code Map</h2><div class="meta">xray.json unreadable: {e}</div>'
+
+    nodes = cmap.get("nodes") or {}
+    edges = cmap.get("edges") or []
+
+    in_deg, out_deg = Counter(), Counter()
+    for e in edges:
+        in_deg[e["dst"]] += 1
+        out_deg[e["src"]] += 1
+
+    per_file = Counter(meta["file"] for meta in nodes.values())
+
+    hot_rows = ""
+    for nid, calls in in_deg.most_common(10):
+        m = nodes.get(nid) or {}
+        hot_rows += (
+            f"<tr><td><code>{m.get('name','?')}</code></td>"
+            f"<td>{m.get('file','?')}:{m.get('line','?')}</td>"
+            f"<td class='num'>{calls}</td></tr>\n"
+        )
+
+    file_rows = ""
+    for fpath, count in per_file.most_common(10):
+        file_rows += f"<tr><td>{fpath}</td><td class='num'>{count}</td></tr>\n"
+
+    # Compact symbol list for client-side search — name, location, degrees.
+    search_data = [
+        {"n": m["name"], "f": f"{m['file']}:{m['line']}", "t": m["type"],
+         "in": in_deg.get(nid, 0), "out": out_deg.get(nid, 0)}
+        for nid, m in nodes.items()
+    ]
+
+    return f"""
+  <h2 id="code-map">🗺️ Code Map</h2>
+  <div class="meta">
+    <strong>{len(per_file)}</strong> files · <strong>{len(nodes)}</strong> symbols ·
+    <strong>{len(edges)}</strong> call edges · built {cmap.get('generated_at', '?')}
+    <br><span style="color:#94a3b8;font-size:12px">Scope: {cmap.get('scope', '?')} —
+    dynamic dispatch (decorators, importlib, string-based calls) is not traced.
+    Query from any terminal, zero tokens: <code>python3 scripts/raven-xray.py --callers NAME</code>
+    · <code>--callees NAME</code> · <code>--impact NAME</code></span>
+  </div>
+  <div style="margin-bottom:16px">
+    <input id="cm-search" type="text" placeholder="Search symbols… (name, min 2 chars)"
+      style="width:100%;padding:10px 14px;background:#1e293b;border:1px solid #334155;border-radius:8px;color:#e2e8f0;font-size:14px"/>
+    <div id="cm-results" style="margin-top:8px"></div>
+  </div>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+    <div>
+      <h3 style="color:#94a3b8;font-size:14px;margin-bottom:8px">Most-called symbols</h3>
+      <table><tr><th>Symbol</th><th>Where</th><th class="num">Callers</th></tr>
+      {hot_rows}</table>
+    </div>
+    <div>
+      <h3 style="color:#94a3b8;font-size:14px;margin-bottom:8px">Densest files (symbol count)</h3>
+      <table><tr><th>File</th><th class="num">Symbols</th></tr>
+      {file_rows}</table>
+    </div>
+  </div>
+  <script type="application/json" id="cm-data">{json.dumps(search_data)}</script>
+  <script>
+  (function() {{
+    var data = JSON.parse(document.getElementById('cm-data').textContent);
+    var input = document.getElementById('cm-search');
+    var out = document.getElementById('cm-results');
+    input.addEventListener('input', function() {{
+      var q = input.value.trim().toLowerCase();
+      if (q.length < 2) {{ out.innerHTML = ''; return; }}
+      var hits = data.filter(function(d) {{ return d.n.toLowerCase().indexOf(q) !== -1; }}).slice(0, 20);
+      if (!hits.length) {{ out.innerHTML = '<div class="meta">No symbols match.</div>'; return; }}
+      var html = '<table><tr><th>Symbol</th><th>Type</th><th>Where</th><th class="num">Callers</th><th class="num">Calls out</th></tr>';
+      hits.forEach(function(d) {{
+        html += '<tr><td><code>' + d.n + '</code></td><td>' + d.t + '</td><td>' + d.f +
+                '</td><td class="num">' + d['in'] + '</td><td class="num">' + d.out + '</td></tr>';
+      }});
+      out.innerHTML = html + '</table>';
+    }});
+  }})();
+  </script>
+"""
+
+
+def render_cost_log_section(metadata: dict) -> str:
+    """💰 Cost Log — per-turn, per-model rows from .raven/cost-log.jsonl.
+
+    Only models actually observed in the transcript get rows; Raven's hook
+    scripts make no API calls and are never logged (the old by_source
+    overhead figures were never computed by anything — do not resurrect).
+    """
+    log_path = RAVEN_DIR / "cost-log.jsonl"
+    if not log_path.exists():
+        return (
+            '<h2 id="cost-log">💰 Cost Log</h2>'
+            '<div class="meta">No rows yet — the log starts filling at the end of the next '
+            'turn (Stop hook). One row per model actually used, with estimated vs computed '
+            'cost and running cumulative totals.</div>'
+        )
+    rows = []
+    try:
+        for line in log_path.read_text().splitlines():
+            try:
+                rows.append(json.loads(line))
+            except json.JSONDecodeError:
+                continue
+    except Exception as e:
+        return f'<h2 id="cost-log">💰 Cost Log</h2><div class="meta">cost-log.jsonl unreadable: {e}</div>'
+
+    if not rows:
+        return '<h2 id="cost-log">💰 Cost Log</h2><div class="meta">Log exists but has no valid rows.</div>'
+
+    total_computed = sum(float(r.get("computed_cost_usd") or 0) for r in rows)
+    latest = rows[-1]
+    recent = rows[-30:]
+
+    body = ""
+    for r in reversed(recent):
+        est = r.get("est_cost_usd")
+        est_cell = format_usd(est) if est is not None else "—"
+        body += (
+            f"<tr><td>{(r.get('ts') or '')[:19].replace('T', ' ')}</td>"
+            f"<td><code>{r.get('model', '?')}</code></td>"
+            f"<td>{r.get('source', '?')}</td>"
+            f"<td class='num'>{(r.get('tokens_in') or 0) + (r.get('tokens_out') or 0):,}</td>"
+            f"<td class='num'>{est_cell}</td>"
+            f"<td class='num'>{format_usd(r.get('computed_cost_usd') or 0)}</td>"
+            f"<td class='num'>{format_usd(r.get('cum_session_usd') or 0)}</td></tr>\n"
+        )
+
+    return f"""
+  <h2 id="cost-log">💰 Cost Log</h2>
+  <div class="meta">
+    <strong>{len(rows)}</strong> rows · all-time computed total <strong>{format_usd(total_computed)}</strong> ·
+    latest cumulative this month <strong>{format_usd(latest.get('cum_month_usd') or 0)}</strong>
+    <br><span style="color:#94a3b8;font-size:12px">One row per model actually observed per turn
+    (subagent rows appear only when a subagent with a model override really ran).
+    "Est" is the router's pre-turn guess; "Computed" is real token usage × pricing —
+    never merged. Raven's own hook scripts make zero API calls and are never logged as cost.
+    Showing latest {len(recent)} rows.</span>
+  </div>
+  <table>
+    <tr><th>When (UTC)</th><th>Model</th><th>Source</th><th class="num">Tokens</th>
+        <th class="num">Est</th><th class="num">Computed</th><th class="num">Cum (session)</th></tr>
+    {body}
+  </table>
+"""
+
+
 def render_html(
     metrics: dict,
     metadata: dict,
@@ -2640,6 +2804,8 @@ def render_html(
   </div>
 
   {kg_section}
+
+  {render_code_map_section(metadata)}
 
 """
 
@@ -2769,6 +2935,8 @@ def render_html(
   </div>
 
   {render_cost_compare_section(metrics, metadata)}
+
+  {render_cost_log_section(metadata)}
 
   <h2 id="costs">📊 Headline numbers — Raven-metered only (every value cited)</h2>
   <p style="color:#94a3b8;font-size:13px;margin-bottom:12px;">

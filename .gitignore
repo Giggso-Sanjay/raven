@@ -34,6 +34,10 @@ __pycache__/
 .raven/state/
 .raven/.model-session.json
 .raven/.token-meter-checkpoint.json
+.raven/xray.json
+.raven/xray-stamp.json
+.raven/.router-state.json
+.raven/cost-log.jsonl
 scripts/.raven/
 
 # Raven cross-team handoff docs — local artifact, share manually, don't commit
