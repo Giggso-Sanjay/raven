@@ -384,22 +384,42 @@ def main():
             print(json.dumps(load_router_state(), indent=2))
         return 0
 
-    # Hook mode gets prompt + session_id from stdin (Claude Code hook payload).
-    # This was the fatal wiring bug: settings.json invokes this script with no
-    # arguments, and --prompt used to be required=True — argparse exited 2 on
-    # every single UserPromptSubmit and `|| true` swallowed it, so the router
-    # never actually ran from the hook. stdin is the only channel the hook has.
+    # Hook / miswired-hook recovery: read prompt + session_id from Claude Code
+    # stdin JSON. Fatal historical bug: global settings.json called this script
+    # as `model-router.py --write-json` with no --prompt → argparse exit 2 and
+    # Claude blocked every UserPromptSubmit. stdin is the only channel hooks
+    # have; accept --hook, --write-json, or CLAUDE_HOOK_EVENT as stdin signals.
     hook_session_id = ""
-    if args.hook and args.prompt is None:
+    wants_stdin = bool(
+        args.hook
+        or args.write_json
+        or os.environ.get("CLAUDE_HOOK_EVENT")
+    )
+    if wants_stdin and args.prompt is None:
         try:
             payload = json.load(sys.stdin) if not sys.stdin.isatty() else {}
         except Exception:
             payload = {}
-        args.prompt = payload.get("prompt", "") or ""
+        if not isinstance(payload, dict):
+            payload = {}
+        args.prompt = (
+            payload.get("prompt")
+            or payload.get("userMessage")
+            or payload.get("message")
+            or ""
+        )
         hook_session_id = payload.get("session_id", "") or ""
+        if not args.context:
+            extra = payload.get("additionalContext")
+            if extra is not None:
+                args.context = extra if isinstance(extra, str) else json.dumps(extra, default=str)
 
+    # Interactive CLI still needs --prompt. Hook/write-json with empty payload
+    # must fail-soft (exit 0) so chat is never blocked.
     if args.prompt is None:
-        parser.error("--prompt is required outside --hook mode")
+        parser.error("--prompt is required outside --hook / --write-json mode")
+    if args.prompt == "":
+        return 0
 
     # Method B inference — if called from a hook context, override to overhead
     # CLAUDE_HOOK_EVENT is set by Claude Code when a hook fires
@@ -517,4 +537,19 @@ def main():
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    try:
+        sys.exit(main())
+    except SystemExit as e:
+        code = e.code if isinstance(e.code, int) else (0 if e.code is None else 1)
+        # parser.error → SystemExit(2). For hook-shaped invocations never block chat.
+        if code != 0 and (
+            "--hook" in sys.argv
+            or "--write-json" in sys.argv
+            or os.environ.get("CLAUDE_HOOK_EVENT")
+        ):
+            print(f"model-router fail-soft (exit {code})", file=sys.stderr)
+            sys.exit(0)
+        sys.exit(code)
+    except Exception as exc:
+        print(f"model-router fail-soft: {exc}", file=sys.stderr)
+        sys.exit(0)

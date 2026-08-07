@@ -199,4 +199,10 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+        sys.exit(0)
+    except Exception as exc:
+        # Fail-soft: never block UserPromptSubmit
+        print(f"model-router-hook fail-soft: {exc}", file=sys.stderr)
+        sys.exit(0)
