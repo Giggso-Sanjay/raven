@@ -2,11 +2,11 @@
   <img src="./assets/raven-banner.png" alt="Raven — Guardrails before you ship." width="800"/>
 </p>
 
-# Raven v5.0.0
+# Raven v5.0.0 — AI Engineering Control Plane
 
-**AI codes fast. Raven enforces Discipline — Strategic Thinking, Scalable Structure, Security at Source.**
+**Raven is the control plane for AI-driven engineering: one governed layer that decides which expert handles each prompt, blocks secrets and vulnerable code before they land, meters every token and dollar with verified math, and keeps a persistent memory of what your team decided and why — all local, before anything ships.**
 
-How, in simple terms:
+AI codes fast. Raven enforces Discipline — Strategic Thinking, Scalable Structure, Security at Source. How, in simple terms:
 
 - **Strategic Thinking** — done by two orchestrators, picked automatically based on what you're doing:
   - **Andie** — for new work and decisions (new repo, new feature, "should we use X or Y?"). Makes a plan, attacks it from three angles (business, technical, data — plus a critic), and waits for your go before touching code.
