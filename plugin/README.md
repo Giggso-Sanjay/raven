@@ -1,4 +1,4 @@
-# Raven Plugin — v4.1.0
+# Raven Plugin — v5.0.0
 
 Upload this folder via Claude Desktop to install Raven as a plugin.
 

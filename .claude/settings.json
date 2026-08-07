@@ -1,6 +1,6 @@
 {
   "version": "1.0",
-  "description": "Raven v3.0 \u2014 Automated governance gate via Andie",
+  "description": "Raven v5.0 \u2014 Automated governance gate via Andie",
   "hooks": {
     "UserPromptSubmit": [
       {

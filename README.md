@@ -2,7 +2,7 @@
   <img src="./assets/raven-banner.png" alt="Raven — Guardrails before you ship." width="800"/>
 </p>
 
-# Raven v4.1.0
+# Raven v5.0.0
 
 **AI codes fast. Raven enforces Discipline — Strategic Thinking, Scalable Structure, Security at Source.**
 
@@ -21,7 +21,7 @@ All local. Zero telemetry. MIT.
 Raven is **not** in an Anthropic-hosted plugin marketplace — `/plugin marketplace add giggsoinc/raven` will not work. Pick one:
 
 1. **Clone + install** — `git clone https://github.com/giggsoinc/raven.git && claude plugin install ./raven/plugin`
-2. **Download zip + install** — grab `raven-plugin-v4.1.0.zip` from [releases](https://github.com/giggsoinc/raven/releases/latest), unzip it, then `claude plugin install /path/to/extracted/plugin`
+2. **Download zip + install** — grab `raven-plugin-v5.0.0.zip` from [releases](https://github.com/giggsoinc/raven/releases/latest), unzip it, then `claude plugin install /path/to/extracted/plugin`
 3. **Let Claude do it** — inside a Claude Code session, ask Claude to clone the repo and run the install command for you (same two steps as Option 1, just delegated)
 
 Full walkthrough (enterprise admin upload, org-wide managed deployment, troubleshooting): [claude_plugin_readme.md](./claude_plugin_readme.md)
@@ -194,7 +194,10 @@ diagrams: [business view](docs/Agent_token_architecture_business.html) ·
 
 ## Features by Version
 
-### **Raven v4.3.0** (Current) — Tokenomics Metering + Vibe-Coder Dashboard
+### **Raven v5.0.0** (Current) — Discipline Fix Chain
+The engine applied to itself: unified script trees + CI drift gates, docs-vs-reality enforcement (PostToolUse guards wired for real), canonical hook config with generated distribution copies, 62-skill ownership registry, honest model-router disclosure + /router toggle, dual-path cost verification, per-model cost log, and the raven-xray Code Map. Full details: VERSIONLOG.md.
+
+### **Raven v4.3.0** — Tokenomics Metering + Vibe-Coder Dashboard
 
 **New:**
 - **Token metering** — `token-meter-write.py` Stop hook records tokens, cost, and call counts per session (session JSON + monthly rollup + audit log). Session-end meters printed in-terminal.
@@ -244,13 +247,13 @@ See [CHANGELOG.md](CHANGELOG.md) for v3.x and earlier.
 
 ## Other Install Paths
 
-**Claude Desktop (ZIP):** download [`raven-plugin-v4.1.0.zip`](plugin/raven-plugin-v4.1.0.zip) → Settings → Extensions → Add plugin → drop the ZIP → restart.
+**Claude Desktop (ZIP):** download [`raven-plugin-v5.0.0.zip`](plugin/raven-plugin-v5.0.0.zip) → Settings → Extensions → Add plugin → drop the ZIP → restart.
 
 **From source:**
 
 ```bash
 git clone https://github.com/giggsoinc/raven.git
-cd raven && bash plugin/make-plugin.sh   # builds plugin/raven-plugin-v4.1.0.zip
+cd raven && bash plugin/make-plugin.sh   # builds plugin/raven-plugin-v5.0.0.zip
 ```
 
 ---
@@ -287,4 +290,4 @@ This repo is the **free tier — everything runs local**, MIT-licensed, complete
   <strong>Built by <a href="https://giggso.com">Giggso</a> · <a href="https://github.com/giggsoinc/raven">GitHub</a> · MIT License</strong>
 </p>
 
-*Raven v4.1.0 — Governance for AI coding at the speed of thought.*
+*Raven v5.0.0 — Governance for AI coding at the speed of thought.*
