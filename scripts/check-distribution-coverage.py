@@ -38,15 +38,30 @@ SCRIPT_RE = re.compile(r"([a-z0-9_-]+\.py)")
 
 
 def scripts_by_event(path: Path) -> dict:
-    """event -> set of *.py script names, read straight from the JSON."""
+    """event -> {script name: normalised args}, read straight from the JSON.
+
+    Args are captured too, not just names. Comparing names alone let BUG-015 through:
+    the exporter stripped every flag from the distributed config and this gate still
+    reported PASS, because the same seven scripts were present in both files. A hook
+    wired without --build or --if-stale is a different hook.
+    """
     data = json.loads(path.read_text(encoding="utf-8"))
     hooks = data.get("hooks", {})
     out = {}
     for event, groups in hooks.items():
-        found = set()
+        found = {}
         for group in groups:
             for hook in group.get("hooks", []):
-                found |= set(SCRIPT_RE.findall(hook.get("command", "")))
+                command = hook.get("command", "")
+                # Only the first fallback branch matters; the rest re-runs the same script.
+                first = command.split("||")[0]
+                m = re.search(r'([a-z0-9_-]+\.py)"?(.*)$', first)
+                if m:
+                    args = m.group(2).replace("2>/dev/null", "").strip()
+                    found[m.group(1)] = args
+                else:
+                    for name in SCRIPT_RE.findall(command):
+                        found.setdefault(name, "")
         out[event] = found
     return out
 
@@ -77,12 +92,18 @@ def main() -> int:
                     f"(canonical runs {sorted(expected)})"
                 )
                 continue
-            missing = expected - dist[event]
+            missing = sorted(set(expected) - set(dist[event]))
             if missing:
                 failures.append(
-                    f"{rel}: event {event} is missing canonical scripts {sorted(missing)} "
+                    f"{rel}: event {event} is missing canonical scripts {missing} "
                     f"(has {sorted(dist[event])})"
                 )
+            for name, want in sorted(expected.items()):
+                if name in dist[event] and dist[event][name] != want:
+                    failures.append(
+                        f"{rel}: event {event} script {name} ARGS DIFFER — "
+                        f"canonical {want!r}, distributed {dist[event][name]!r}"
+                    )
 
     if failures:
         print("raven-distribution-coverage-check: FAIL (distribution lost canonical hooks)")
@@ -94,7 +115,7 @@ def main() -> int:
     total = sum(len(v) for v in canon.values())
     print(
         f"raven-distribution-coverage-check: PASS — all {len(DISTRIBUTION)} distribution "
-        f"configs cover canonical ({events} events, {total} script wirings)"
+        f"configs cover canonical ({events} events, {total} script wirings, args included)"
     )
     return 0
 
