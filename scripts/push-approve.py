@@ -33,8 +33,26 @@ APPROVAL_PATTERN = re.compile(
     r"|\bdo it\b|\bbuild it\b|^\s*go\s*$|^\s*yes\s*$|\bLucky\b)",
     re.IGNORECASE,
 )
-GUIDED_PATTERN = re.compile(r"^\s*guided\b|\bguided mode\b", re.IGNORECASE)
-AUTO_PATTERN = re.compile(r"^\s*auto\b|\bauto mode\b", re.IGNORECASE)
+# Mode switches. The old patterns anchored `guided` to the very start of the whole
+# message (no re.MULTILINE), so a natural instruction like
+#   "turn on enforcement:\n  guided"
+# matched nothing, the mode was never set, and the request read as an unrelated task
+# — observed live (BUG-025). Accept: the word alone on any line, "guided mode", or a
+# switch verb followed by the word within one clause.
+_MODE_VERB = r"(?:turn\s+on|turn\s+it\s+on|enable|switch(?:\s+to)?|set|use|activate|go)"
+
+GUIDED_PATTERN = re.compile(
+    r"^\s*guided\s*$"                        # a line that is just: guided
+    r"|\bguided\s+mode\b"                    # "guided mode"
+    rf"|\b{_MODE_VERB}\b[^.\n]{{0,40}}?\bguided\b",   # "turn on enforcement: guided"
+    re.IGNORECASE | re.MULTILINE,
+)
+AUTO_PATTERN = re.compile(
+    r"^\s*auto\s*$"                          # a line that is just: auto
+    r"|\bauto\s+mode\b"
+    rf"|\b{_MODE_VERB}\b[^.\n]{{0,40}}?\bauto\b",
+    re.IGNORECASE | re.MULTILINE,
+)
 
 
 def repo_root() -> str:
