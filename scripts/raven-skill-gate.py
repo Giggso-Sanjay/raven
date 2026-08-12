@@ -46,6 +46,16 @@ import time
 from datetime import datetime, timezone
 from pathlib import Path
 
+# The warn paths print non-ASCII (⚠️). On a legacy Windows console codepage that
+# raises UnicodeEncodeError and the gate exits 1 from soft/override paths that MUST
+# allow — a hook crashing is worse than a hook warning. Never let output encoding
+# decide whether an edit proceeds.
+for _stream in (sys.stdout, sys.stderr):
+    try:
+        _stream.reconfigure(encoding="utf-8", errors="replace")
+    except (AttributeError, ValueError):  # pragma: no cover - non-reconfigurable stream
+        pass
+
 STATE_DIR = Path(".raven") / "state"
 POLICY_FILE = STATE_DIR / "routing-policy.json"
 MARKER_FILE = STATE_DIR / "skill-invocations.jsonl"

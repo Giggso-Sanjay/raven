@@ -32,12 +32,16 @@ from vault_common import (  # noqa: E402
     parse_frontmatter,
 )
 
-TYPE_DIRS = {
-    "project": PROJECTS,
-    "concept": CONCEPTS,
-    "decision": DECISIONS,
-    "session": SESSIONS,
-}
+def _type_dirs() -> dict[str, pathlib.Path]:
+    # Read the module globals at call time, not import time — the vault paths are
+    # rebindable (tests patch them; a relocated vault changes them). A module-level
+    # dict would freeze the original Path objects and silently scan the wrong tree.
+    return {
+        "project": PROJECTS,
+        "concept": CONCEPTS,
+        "decision": DECISIONS,
+        "session": SESSIONS,
+    }
 
 
 def _node_id(rel: str) -> str:
@@ -90,7 +94,7 @@ def build_graph(project_filter: str | None = None, session_days: int | None = 30
             "icon": icon,
         }
 
-    for ntype, folder in TYPE_DIRS.items():
+    for ntype, folder in _type_dirs().items():
         if not folder.exists():
             continue
         for path in folder.glob("*.md"):
