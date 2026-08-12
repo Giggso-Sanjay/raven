@@ -17,7 +17,7 @@
           {
             "type": "command",
             "timeout": 10,
-            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/scripts/model-router.py\" 2>/dev/null || true"
+            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/scripts/model-router.py\" --hook 2>/dev/null || true"
           },
           {
             "type": "command",
@@ -58,7 +58,7 @@
             "type": "command",
             "timeout": 5,
             "async": false,
-            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/scripts/vault-load.py\" 2>/dev/null || true"
+            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/scripts/vault-load.py\" --hook 2>/dev/null || true"
           },
           {
             "type": "command",
@@ -81,7 +81,7 @@
           {
             "type": "command",
             "async": true,
-            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/scripts/secret-scan.py\" 2>/dev/null || true"
+            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/scripts/secret-scan.py\" --changed-files-only </dev/null 2>/dev/null || true"
           }
         ]
       }
@@ -103,12 +103,12 @@
           {
             "type": "command",
             "async": true,
-            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/scripts/dashboard.py\" 2>/dev/null || true"
+            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/scripts/dashboard.py\" --html --current-project --if-stale 15 2>/dev/null || true"
           },
           {
             "type": "command",
             "async": true,
-            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/scripts/raven-xray.py\" 2>/dev/null || true"
+            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/scripts/raven-xray.py\" --build --if-stale 15 2>/dev/null || true"
           },
           {
             "type": "command",
@@ -118,7 +118,7 @@
           {
             "type": "command",
             "async": true,
-            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/scripts/knowledge-extract.py\" 2>/dev/null || true"
+            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/scripts/knowledge-extract.py\" --quiet 2>/dev/null || true"
           },
           {
             "type": "command",

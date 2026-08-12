@@ -17,6 +17,16 @@ import json
 import pathlib
 import sys
 
+# The digest opens with 🪶 (U+1FAB6). On a legacy Windows console codepage that raises
+# UnicodeEncodeError, which the fail-soft handler swallows as exit 0 — so the vault
+# digest is silently never loaded and nobody is told. Same class as raven-skill-gate.py:
+# output encoding must never decide whether a hook does its job.
+for _stream in (sys.stdout, sys.stderr):
+    try:
+        _stream.reconfigure(encoding="utf-8", errors="replace")
+    except (AttributeError, ValueError):  # pragma: no cover - non-reconfigurable stream
+        pass
+
 _SCRIPT_DIR = pathlib.Path(__file__).resolve().parent
 if str(_SCRIPT_DIR) not in sys.path:
     sys.path.insert(0, str(_SCRIPT_DIR))
