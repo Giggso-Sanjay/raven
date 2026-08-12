@@ -13,6 +13,16 @@ import pathlib
 import subprocess
 import sys
 
+# Raven output is emoji-forward and a console/pipe defaults to cp1252 on Windows, so
+# print() raises UnicodeEncodeError and any fail-soft wrapper swallows it — the script
+# appears to do nothing while having done its work. PYTHONUTF8=1 covers hook
+# invocations; this covers being run by hand or by a skill via Bash. BUG-029.
+for _stream in (sys.stdout, sys.stderr):
+    try:
+        _stream.reconfigure(encoding="utf-8", errors="replace")
+    except (AttributeError, ValueError):  # pragma: no cover
+        pass
+
 _SCRIPT_DIR = pathlib.Path(__file__).resolve().parent
 if str(_SCRIPT_DIR) not in sys.path:
     sys.path.insert(0, str(_SCRIPT_DIR))
