@@ -137,6 +137,64 @@ def test_guided_prompt_actually_sets_the_mode(tmp_path):
     assert _decision(_run(repo, EDIT)) == "deny", "guided set but gate not enforcing"
 
 
+def _patterns():
+    import importlib.util
+    spec = importlib.util.spec_from_file_location("_push_approve", APPROVE)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+GUIDED_YES = [
+    "guided",
+    "turn on enforcement:\n  guided",   # the exact live failure (BUG-025)
+    "turn on enforcement: guided",
+    "guided mode",
+    "enable guided",
+    "switch to guided mode",
+    "activate guided",
+]
+GUIDED_NO = [
+    "write a guided tour page",
+    "the guided setup docs are stale",
+    "add a guided onboarding flow to the frontend",
+    "refactor app.py",
+]
+AUTO_YES = ["auto", "auto mode", "switch to auto", "turn on auto"]
+AUTO_NO = ["auto-generate the docs", "add autocomplete to the search box",
+           "automate the deploy"]
+
+
+def test_mode_words_match_natural_phrasings():
+    """The old pattern anchored `guided` to the start of the WHOLE message.
+
+    "turn on enforcement:\\n  guided" matched nothing, so the mode silently stayed
+    advisory and the instruction read as an unrelated task — observed live.
+    """
+    mod = _patterns()
+    for p in GUIDED_YES:
+        assert mod.GUIDED_PATTERN.search(p), f"should enable guided: {p!r}"
+    for p in AUTO_YES:
+        assert mod.AUTO_PATTERN.search(p), f"should enable auto: {p!r}"
+
+
+def test_mode_words_ignore_incidental_use():
+    """A feature request that happens to say "guided" must not flip the gate."""
+    mod = _patterns()
+    for p in GUIDED_NO:
+        assert not mod.GUIDED_PATTERN.search(p), f"false positive: {p!r}"
+    for p in AUTO_NO:
+        assert not mod.AUTO_PATTERN.search(p), f"false positive: {p!r}"
+
+
+def test_natural_phrasing_end_to_end_denies(tmp_path):
+    """Prose form must set the mode AND make the gate enforce."""
+    repo = _repo(tmp_path)
+    _approve(repo, "turn on enforcement:\n  guided", io_encoding="cp1252")
+    assert (repo / ".raven" / ".push-mode").read_text(encoding="utf-8").strip() == "guided"
+    assert _decision(_run(repo, EDIT)) == "deny"
+
+
 def test_gate_can_always_be_repaired(tmp_path):
     """Self-exemption: guided mode must never block fixing or disabling itself."""
     repo = _repo(tmp_path)
