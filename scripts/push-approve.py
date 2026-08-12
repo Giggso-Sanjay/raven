@@ -17,6 +17,17 @@ import os
 import re
 import sys
 
+# Every confirmation this script prints starts with an emoji (🎓 / ⚡ / 🪶). On a legacy
+# Windows console codepage that raises UnicodeEncodeError, the fail-soft wrapper
+# swallows it, and the user gets NO feedback that guided mode or their go-ahead
+# registered — the flag file is written, so the feature works while appearing dead.
+# Verified live: `guided` set .push-mode and printed nothing (BUG-024).
+for _stream in (sys.stdout, sys.stderr):
+    try:
+        _stream.reconfigure(encoding="utf-8", errors="replace")
+    except (AttributeError, ValueError):  # pragma: no cover - non-reconfigurable stream
+        pass
+
 APPROVAL_PATTERN = re.compile(
     r"(?:\bgo[- ]?ahead\b|\bapproved?\b|\bproceed\b|\bship it\b|\blgtm\b"
     r"|\bdo it\b|\bbuild it\b|^\s*go\s*$|^\s*yes\s*$|\bLucky\b)",
