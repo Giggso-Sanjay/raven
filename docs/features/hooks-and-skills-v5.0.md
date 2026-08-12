@@ -24,7 +24,7 @@ One registry file is new (`skills/MANIFEST.json` — a registry, not a skill).
 
 | | |
 |---|---|
-| **Path** | `.claude/skills/router/SKILL.md` |
+| **Path** | `skills/router/SKILL.md` (was `.claude/skills/` until BUG-030 — a project-local dir the plugin loader never reads, so no install could invoke `/router`) |
 | **Introduced** | `964e017` — *feat(router,xray,costlog): honest model routing CX, Code Map, per-model cost log* |
 | **Entry point** | Slash command `/router`, `/router off`, `/router status` |
 | **Backing script** | `scripts/model-router.py --enable` / `--disable` / `--status` |
