@@ -65,7 +65,7 @@
           },
           {
             "type": "command",
-            "command": "rm -f \"${CLAUDE_PROJECT_DIR:-.}/.raven/.push-mode\" \"${CLAUDE_PROJECT_DIR:-.}/.raven/.push-approved\" \"${CLAUDE_PROJECT_DIR:-.}/.raven/.push-notice-shown\"",
+            "command": "python3 \"${CLAUDE_PROJECT_DIR:-.}/.claude/scripts/push-gate.py\" --reset 2>/dev/null || python3 \"${CLAUDE_PROJECT_DIR:-.}/scripts/push-gate.py\" --reset 2>/dev/null || true",
             "timeout": 5,
             "async": false
           }

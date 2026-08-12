@@ -26,9 +26,28 @@ GUIDED_PATTERN = re.compile(r"^\s*guided\b|\bguided mode\b", re.IGNORECASE)
 AUTO_PATTERN = re.compile(r"^\s*auto\b|\bauto mode\b", re.IGNORECASE)
 
 
+def repo_root() -> str:
+    """CLAUDE_PROJECT_DIR, else walk up to the nearest .git (BUG-022).
+
+    Same cwd bug class as push-gate.py had: a bare os.getcwd() fallback writes the
+    approval flag into whatever directory the hook happened to run from, so an approval
+    given in one project can land in another's .raven/.
+    """
+    env_root = os.environ.get("CLAUDE_PROJECT_DIR")
+    if env_root:
+        return env_root
+    d = os.getcwd()
+    while True:
+        if os.path.isdir(os.path.join(d, ".git")):
+            return d
+        parent = os.path.dirname(d)
+        if parent == d:
+            return os.getcwd()
+        d = parent
+
+
 def raven_path(*parts: str) -> str:
-    root = os.environ.get("CLAUDE_PROJECT_DIR") or os.getcwd()
-    return os.path.join(root, ".raven", *parts)
+    return os.path.join(repo_root(), ".raven", *parts)
 
 
 def write_file(path: str, content: str) -> None:
