@@ -36,7 +36,10 @@ PLUGIN_EXTRA_HOOKS = {
             "hooks": [
                 {
                     "type": "command",
-                    "command": "python3 \"${CLAUDE_PROJECT_DIR:-.}/scripts/raven-skill-gate.py\" 2>/dev/null || true",
+                    # PYTHONUTF8=1 for the same reason as every generated command
+                    # (BUG-017) — and this script in particular is what BUG-014 was:
+                    # it printed ⚠️ and exited 1 from its own allow paths.
+                    "command": "PYTHONUTF8=1 python3 \"${CLAUDE_PROJECT_DIR:-.}/scripts/raven-skill-gate.py\" 2>/dev/null || true",
                 }
             ],
         }
@@ -83,7 +86,17 @@ def _plugin_root_command(command: str) -> str:
     name = m.group(1)
     args = m.group(2).replace("2>/dev/null", "").strip()
     args = f" {args}" if args else ""
-    return f'python3 "${{CLAUDE_PLUGIN_ROOT}}/scripts/{name}"{args} 2>/dev/null || true'
+    # PYTHONUTF8=1 must survive the rewrite (BUG-017). Raven's output is emoji-forward,
+    # and on Windows a hook's stdout defaults to cp1252 — print() then raises and the
+    # fail-soft wrapper swallows it, so the hook silently does nothing. It fixes the
+    # decode side too (transcripts are UTF-8). Verified in a real shell: without it
+    # stdout is cp1252 and 🎓 raises; with it stdout is utf-8 and prints.
+    # Caveat: PYTHONUTF8 does NOT override an explicit PYTHONIOENCODING — if anything
+    # ever sets that to a legacy codepage, the in-script reconfigure guards are the
+    # remaining defence, which is why those stay.
+    prefix = "PYTHONUTF8=1 " if "PYTHONUTF8=1" in command else ""
+    return (f'{prefix}python3 "${{CLAUDE_PLUGIN_ROOT}}/scripts/{name}"{args} '
+            f'2>/dev/null || true')
 
 
 def build_outputs(canonical: dict) -> dict:
