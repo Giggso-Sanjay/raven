@@ -8,27 +8,27 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 \"${CLAUDE_PROJECT_DIR:-.}/.claude/scripts/triage-router.py\" 2>/dev/null || python3 \"${CLAUDE_PROJECT_DIR:-.}/scripts/triage-router.py\" 2>/dev/null || true",
+            "command": "PYTHONUTF8=1 python3 \"${CLAUDE_PROJECT_DIR:-.}/.claude/scripts/triage-router.py\" 2>/dev/null || PYTHONUTF8=1 python3 \"${CLAUDE_PROJECT_DIR:-.}/scripts/triage-router.py\" 2>/dev/null || true",
             "timeout": 10
           },
           {
             "type": "command",
-            "command": "python3 \"${CLAUDE_PROJECT_DIR:-.}/.claude/scripts/architect-router.py\" 2>/dev/null || python3 \"${CLAUDE_PROJECT_DIR:-.}/scripts/architect-router.py\" 2>/dev/null || true",
+            "command": "PYTHONUTF8=1 python3 \"${CLAUDE_PROJECT_DIR:-.}/.claude/scripts/architect-router.py\" 2>/dev/null || PYTHONUTF8=1 python3 \"${CLAUDE_PROJECT_DIR:-.}/scripts/architect-router.py\" 2>/dev/null || true",
             "timeout": 10
           },
           {
             "type": "command",
-            "command": "python3 \"${CLAUDE_PROJECT_DIR:-.}/.claude/scripts/model-router.py\" --hook 2>/dev/null || python3 \"${CLAUDE_PROJECT_DIR:-.}/scripts/model-router.py\" --hook 2>/dev/null || true",
+            "command": "PYTHONUTF8=1 python3 \"${CLAUDE_PROJECT_DIR:-.}/.claude/scripts/model-router.py\" --hook 2>/dev/null || PYTHONUTF8=1 python3 \"${CLAUDE_PROJECT_DIR:-.}/scripts/model-router.py\" --hook 2>/dev/null || true",
             "timeout": 10
           },
           {
             "type": "command",
-            "command": "python3 \"${CLAUDE_PROJECT_DIR:-.}/.claude/scripts/cve-prompt-guard.py\" 2>/dev/null || python3 \"${CLAUDE_PROJECT_DIR:-.}/scripts/cve-prompt-guard.py\" 2>/dev/null || true",
+            "command": "PYTHONUTF8=1 python3 \"${CLAUDE_PROJECT_DIR:-.}/.claude/scripts/cve-prompt-guard.py\" 2>/dev/null || PYTHONUTF8=1 python3 \"${CLAUDE_PROJECT_DIR:-.}/scripts/cve-prompt-guard.py\" 2>/dev/null || true",
             "timeout": 10
           },
           {
             "type": "command",
-            "command": "python3 \"${CLAUDE_PROJECT_DIR:-.}/.claude/scripts/push-approve.py\" 2>/dev/null || true",
+            "command": "PYTHONUTF8=1 python3 \"${CLAUDE_PROJECT_DIR:-.}/.claude/scripts/push-approve.py\" 2>/dev/null || true",
             "timeout": 5
           }
         ]
@@ -40,7 +40,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 \"${CLAUDE_PROJECT_DIR:-.}/.claude/scripts/push-gate.py\" 2>/dev/null || python3 \"${CLAUDE_PROJECT_DIR:-.}/scripts/push-gate.py\" 2>/dev/null || true",
+            "command": "PYTHONUTF8=1 python3 \"${CLAUDE_PROJECT_DIR:-.}/.claude/scripts/push-gate.py\" 2>/dev/null || PYTHONUTF8=1 python3 \"${CLAUDE_PROJECT_DIR:-.}/scripts/push-gate.py\" 2>/dev/null || true",
             "timeout": 5
           }
         ]
@@ -52,19 +52,19 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 \"${CLAUDE_PROJECT_DIR:-.}/.claude/scripts/session-start.py\" 2>/dev/null || python3 \"${CLAUDE_PROJECT_DIR:-.}/scripts/session-start.py\" 2>/dev/null || true",
+            "command": "PYTHONUTF8=1 python3 \"${CLAUDE_PROJECT_DIR:-.}/.claude/scripts/session-start.py\" 2>/dev/null || PYTHONUTF8=1 python3 \"${CLAUDE_PROJECT_DIR:-.}/scripts/session-start.py\" 2>/dev/null || true",
             "timeout": 10,
             "async": false
           },
           {
             "type": "command",
-            "command": "python3 \"${CLAUDE_PROJECT_DIR:-.}/.claude/scripts/vault-load.py\" --hook 2>/dev/null || python3 \"${CLAUDE_PROJECT_DIR:-.}/scripts/vault-load.py\" --hook 2>/dev/null || true",
+            "command": "PYTHONUTF8=1 python3 \"${CLAUDE_PROJECT_DIR:-.}/.claude/scripts/vault-load.py\" --hook 2>/dev/null || PYTHONUTF8=1 python3 \"${CLAUDE_PROJECT_DIR:-.}/scripts/vault-load.py\" --hook 2>/dev/null || true",
             "timeout": 5,
             "async": false
           },
           {
             "type": "command",
-            "command": "python3 \"${CLAUDE_PROJECT_DIR:-.}/.claude/scripts/push-gate.py\" --reset 2>/dev/null || python3 \"${CLAUDE_PROJECT_DIR:-.}/scripts/push-gate.py\" --reset 2>/dev/null || true",
+            "command": "PYTHONUTF8=1 python3 \"${CLAUDE_PROJECT_DIR:-.}/.claude/scripts/push-gate.py\" --reset 2>/dev/null || PYTHONUTF8=1 python3 \"${CLAUDE_PROJECT_DIR:-.}/scripts/push-gate.py\" --reset 2>/dev/null || true",
             "timeout": 5,
             "async": false
           }
@@ -77,12 +77,12 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 \"${CLAUDE_PROJECT_DIR:-.}/.claude/scripts/db-guard.py\" 2>/dev/null || python3 \"${CLAUDE_PROJECT_DIR:-.}/scripts/db-guard.py\" 2>/dev/null || true",
+            "command": "PYTHONUTF8=1 python3 \"${CLAUDE_PROJECT_DIR:-.}/.claude/scripts/db-guard.py\" 2>/dev/null || PYTHONUTF8=1 python3 \"${CLAUDE_PROJECT_DIR:-.}/scripts/db-guard.py\" 2>/dev/null || true",
             "async": true
           },
           {
             "type": "command",
-            "command": "python3 \"${CLAUDE_PROJECT_DIR:-.}/.claude/scripts/secret-scan.py\" --changed-files-only </dev/null 2>/dev/null || python3 \"${CLAUDE_PROJECT_DIR:-.}/scripts/secret-scan.py\" --changed-files-only </dev/null 2>/dev/null || true",
+            "command": "PYTHONUTF8=1 python3 \"${CLAUDE_PROJECT_DIR:-.}/.claude/scripts/secret-scan.py\" --changed-files-only </dev/null 2>/dev/null || PYTHONUTF8=1 python3 \"${CLAUDE_PROJECT_DIR:-.}/scripts/secret-scan.py\" --changed-files-only </dev/null 2>/dev/null || true",
             "async": true
           }
         ]
@@ -94,37 +94,37 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 \"${CLAUDE_PROJECT_DIR:-.}/.claude/scripts/token-meter-write.py\" 2>/dev/null || python3 \"${CLAUDE_PROJECT_DIR:-.}/scripts/token-meter-write.py\" 2>/dev/null || true",
+            "command": "PYTHONUTF8=1 python3 \"${CLAUDE_PROJECT_DIR:-.}/.claude/scripts/token-meter-write.py\" 2>/dev/null || PYTHONUTF8=1 python3 \"${CLAUDE_PROJECT_DIR:-.}/scripts/token-meter-write.py\" 2>/dev/null || true",
             "async": true
           },
           {
             "type": "command",
-            "command": "python3 \"${CLAUDE_PROJECT_DIR:-.}/.claude/scripts/token-guard.py\" 2>/dev/null || true",
+            "command": "PYTHONUTF8=1 python3 \"${CLAUDE_PROJECT_DIR:-.}/.claude/scripts/token-guard.py\" 2>/dev/null || true",
             "async": true
           },
           {
             "type": "command",
-            "command": "python3 \"${CLAUDE_PROJECT_DIR:-.}/.claude/scripts/dashboard.py\" --html --current-project --if-stale 15 2>/dev/null || python3 \"${CLAUDE_PROJECT_DIR:-.}/scripts/dashboard.py\" --html --current-project --if-stale 15 2>/dev/null || true",
+            "command": "PYTHONUTF8=1 python3 \"${CLAUDE_PROJECT_DIR:-.}/.claude/scripts/dashboard.py\" --html --current-project --if-stale 15 2>/dev/null || PYTHONUTF8=1 python3 \"${CLAUDE_PROJECT_DIR:-.}/scripts/dashboard.py\" --html --current-project --if-stale 15 2>/dev/null || true",
             "async": true
           },
           {
             "type": "command",
-            "command": "python3 \"${CLAUDE_PROJECT_DIR:-.}/.claude/scripts/raven-xray.py\" --build --if-stale 15 2>/dev/null || python3 \"${CLAUDE_PROJECT_DIR:-.}/scripts/raven-xray.py\" --build --if-stale 15 2>/dev/null || true",
+            "command": "PYTHONUTF8=1 python3 \"${CLAUDE_PROJECT_DIR:-.}/.claude/scripts/raven-xray.py\" --build --if-stale 15 2>/dev/null || PYTHONUTF8=1 python3 \"${CLAUDE_PROJECT_DIR:-.}/scripts/raven-xray.py\" --build --if-stale 15 2>/dev/null || true",
             "async": true
           },
           {
             "type": "command",
-            "command": "python3 \"${CLAUDE_PROJECT_DIR:-.}/.claude/scripts/obsidian-log.py\" 2>/dev/null || python3 \"${CLAUDE_PROJECT_DIR:-.}/scripts/obsidian-log.py\" 2>/dev/null || true",
+            "command": "PYTHONUTF8=1 python3 \"${CLAUDE_PROJECT_DIR:-.}/.claude/scripts/obsidian-log.py\" 2>/dev/null || PYTHONUTF8=1 python3 \"${CLAUDE_PROJECT_DIR:-.}/scripts/obsidian-log.py\" 2>/dev/null || true",
             "async": true
           },
           {
             "type": "command",
-            "command": "python3 \"${CLAUDE_PROJECT_DIR:-.}/.claude/scripts/knowledge-extract.py\" --quiet 2>/dev/null || python3 \"${CLAUDE_PROJECT_DIR:-.}/scripts/knowledge-extract.py\" --quiet 2>/dev/null || true",
+            "command": "PYTHONUTF8=1 python3 \"${CLAUDE_PROJECT_DIR:-.}/.claude/scripts/knowledge-extract.py\" --quiet 2>/dev/null || PYTHONUTF8=1 python3 \"${CLAUDE_PROJECT_DIR:-.}/scripts/knowledge-extract.py\" --quiet 2>/dev/null || true",
             "async": true
           },
           {
             "type": "command",
-            "command": "python3 \"${CLAUDE_PROJECT_DIR:-.}/.claude/scripts/session-gate.py\" 2>/dev/null || python3 \"${CLAUDE_PROJECT_DIR:-.}/scripts/session-gate.py\" 2>/dev/null || true",
+            "command": "PYTHONUTF8=1 python3 \"${CLAUDE_PROJECT_DIR:-.}/.claude/scripts/session-gate.py\" 2>/dev/null || PYTHONUTF8=1 python3 \"${CLAUDE_PROJECT_DIR:-.}/scripts/session-gate.py\" 2>/dev/null || true",
             "async": true
           }
         ]

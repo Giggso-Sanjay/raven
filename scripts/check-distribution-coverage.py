@@ -22,9 +22,20 @@ believe this one: it does not import the code it is checking.
 Exit 0 = every distribution copy covers canonical. Exit 1 = something is missing.
 """
 import json
+import pathlib
 import re
 import sys
 from pathlib import Path
+
+# Raven output is emoji-forward and a console/pipe defaults to cp1252 on Windows, so
+# print() raises UnicodeEncodeError and any fail-soft wrapper swallows it — the script
+# appears to do nothing while having done its work. PYTHONUTF8=1 covers hook
+# invocations; this covers being run by hand or by a skill via Bash. BUG-029.
+for _stream in (sys.stdout, sys.stderr):
+    try:
+        _stream.reconfigure(encoding="utf-8", errors="replace")
+    except (AttributeError, ValueError):  # pragma: no cover
+        pass
 
 REPO = Path(__file__).resolve().parent.parent
 CANONICAL = REPO / ".claude" / "settings.json"
@@ -88,13 +99,48 @@ def missing_script_files(canon: dict) -> list:
     return problems
 
 
+def unprefixed_python_commands() -> list:
+    """Every hook command invoking python3 must carry PYTHONUTF8=1 (BUG-017).
+
+    Raven's output is emoji-forward and a hook's stdout defaults to cp1252 on Windows,
+    so print() raises and the `|| true` fail-soft swallows it — the hook silently does
+    nothing. Six separate bugs came from this one class (BUG-007/014/016/024 and twice
+    inside BUG-027), three of them failing silently. Checked in every config, canonical
+    included, because a new hook added without the prefix is a hook that will one day
+    do nothing on someone's machine.
+    """
+    problems = []
+    for rel in [pathlib.Path(".claude") / "settings.json", *DISTRIBUTION]:
+        path = REPO / rel
+        if not path.is_file():
+            continue
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, OSError):
+            continue  # covered by other checks
+        hooks = data.get("hooks", {})
+        for event, groups in hooks.items():
+            for group in groups:
+                for hook in group.get("hooks", []):
+                    command = hook.get("command", "")
+                    for branch in command.split("||"):
+                        if "python3" in branch and "PYTHONUTF8=1" not in branch:
+                            script = SCRIPT_RE.search(branch)
+                            problems.append(
+                                f"{rel}: {event} runs {script.group(1) if script else 'python3'} "
+                                f"without PYTHONUTF8=1 — its output will be silently dropped on a "
+                                f"legacy Windows console"
+                            )
+    return problems
+
+
 def main() -> int:
     if not CANONICAL.is_file():
         print(f"raven-distribution-coverage-check: FAIL — canonical missing: {CANONICAL}")
         return 1
 
     canon = scripts_by_event(CANONICAL)
-    failures = missing_script_files(canon)
+    failures = missing_script_files(canon) + unprefixed_python_commands()
 
     for rel in DISTRIBUTION:
         path = REPO / rel
