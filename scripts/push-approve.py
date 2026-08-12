@@ -1,15 +1,19 @@
 #!/usr/bin/env python3
 """push-approve.py — UserPromptSubmit hook for the Educated Push Contract.
 
-Watches the user's message for:
-  'guided' / 'auto'  → sets session mode in .raven/.push-mode
-  go-ahead words     → creates .raven/.push-approved (opens push-gate for a turn)
-  'Lucky'            → existing opt-out keyword, also opens the gate
+Watches the user's message for go-ahead words ('go ahead', 'approved', 'GO',
+'proceed', 'Lucky', ...) and RECORDS the approval in .raven/.push-approved.
+Any other message clears a leftover flag so each change cycle starts clean.
 
-Any other message clears a leftover approval flag so each change cycle starts
-clean. This script is the ONLY flag cleaner — a Stop-hook rm was removed after
-it raced prompt submission and deleted fresh approvals. Mode persists until
-SessionStart resets it. Fail-soft: any internal error exits 0.
+Nothing gates on that flag. Educated Push is advisory (bb40ee0) — push-gate.py
+always allows — so the flag is a record of consent, not a key. CLAUDE.md used to
+claim the go-ahead "opens the write gate"; there is no write gate, and that
+wording was corrected rather than reinstated when the opt-in guided mode was
+removed (2026-08-13, see bug-fix-log.md BUG-023).
+
+This script is the ONLY flag cleaner — a Stop-hook rm was removed after it raced
+prompt submission and deleted fresh approvals. Fail-soft: any internal error
+exits 0.
 """
 
 import json
@@ -32,26 +36,6 @@ APPROVAL_PATTERN = re.compile(
     r"(?:\bgo[- ]?ahead\b|\bapproved?\b|\bproceed\b|\bship it\b|\blgtm\b"
     r"|\bdo it\b|\bbuild it\b|^\s*go\s*$|^\s*yes\s*$|\bLucky\b)",
     re.IGNORECASE,
-)
-# Mode switches. The old patterns anchored `guided` to the very start of the whole
-# message (no re.MULTILINE), so a natural instruction like
-#   "turn on enforcement:\n  guided"
-# matched nothing, the mode was never set, and the request read as an unrelated task
-# — observed live (BUG-025). Accept: the word alone on any line, "guided mode", or a
-# switch verb followed by the word within one clause.
-_MODE_VERB = r"(?:turn\s+on|turn\s+it\s+on|enable|switch(?:\s+to)?|set|use|activate|go)"
-
-GUIDED_PATTERN = re.compile(
-    r"^\s*guided\s*$"                        # a line that is just: guided
-    r"|\bguided\s+mode\b"                    # "guided mode"
-    rf"|\b{_MODE_VERB}\b[^.\n]{{0,40}}?\bguided\b",   # "turn on enforcement: guided"
-    re.IGNORECASE | re.MULTILINE,
-)
-AUTO_PATTERN = re.compile(
-    r"^\s*auto\s*$"                          # a line that is just: auto
-    r"|\bauto\s+mode\b"
-    rf"|\b{_MODE_VERB}\b[^.\n]{{0,40}}?\bauto\b",
-    re.IGNORECASE | re.MULTILINE,
 )
 
 
@@ -89,22 +73,11 @@ def main() -> None:
     payload = json.load(sys.stdin)
     prompt = payload.get("prompt", "") or ""
 
-    if GUIDED_PATTERN.search(prompt):
-        write_file(raven_path(".push-mode"), "guided")
-        print("🎓 EDUCATED PUSH: GUIDED mode set for this session — every change "
-              "needs a 200-word briefing and the user's go-ahead first.")
-        return
-    if AUTO_PATTERN.search(prompt):
-        write_file(raven_path(".push-mode"), "auto")
-        print("⚡ EDUCATED PUSH: AUTO mode set for this session — write gate open, "
-              "no briefings required. User owns risk.")
-        return
-
     if APPROVAL_PATTERN.search(prompt):
         write_file(raven_path(".push-approved"), prompt[:200])
-        print("✅ EDUCATED PUSH: approval detected — write gate OPEN for this turn. "
-              "Execute the approved briefing, then confirm in max 150 words "
-              "(bullets + changed files).")
+        print("✅ EDUCATED PUSH: go-ahead recorded. Execute the briefing as stated, "
+              "then confirm in max 150 words (bullets + changed files). "
+              "Advisory — nothing was blocked.")
     else:
         try:
             os.remove(raven_path(".push-approved"))
