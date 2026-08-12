@@ -92,6 +92,16 @@ SYMPTOM_NEGATE = re.compile(
     r"|\bnot\s+(?:working|responding|loading|firing|starting)\b"
     r"|\bcan'?t\s+(?:connect|reach|access)\b"
     r"|\bwhy\s+(?:is|isn'?t|did|does|won'?t)\s+(?:my|the|this)"
+    # HTTP failure reports (BUG-020). A precisely-worded bug report often contains no
+    # symptom *word* at all — "/api/x returns 500 ... instead of a clean 4xx" has no
+    # fail/crash/broken/error, so it slipped past both routers and Claude had to
+    # self-route. Status codes ARE symptom language for an HTTP service.
+    r"|\b[45]xx\b"
+    # Exception class names: \berror\b cannot match inside "TypeError" (no word
+    # boundary), so "throws a TypeError" carried no symptom signal at all.
+    r"|\b\w+Error\b"
+    r"|\b(?:returns?|returning|returned|throw(?:s|ing|n)?|gives?|"
+    r"responds?\s+with|responding\s+with)\s+(?:an?\s+)?(?:HTTP\s*)?[45]\d\d\b"
     r")",
     re.IGNORECASE,
 )
