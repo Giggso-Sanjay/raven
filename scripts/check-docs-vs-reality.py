@@ -17,12 +17,12 @@ REPO = Path(__file__).resolve().parent.parent
 CLAUDE_MD = REPO / "CLAUDE.md"
 SETTINGS = REPO / ".claude" / "settings.json"
 
-HOOK_EVENTS = ("SessionStart", "UserPromptSubmit", "PostToolUse", "Stop")
+HOOK_EVENTS = ("SessionStart", "UserPromptSubmit", "PreToolUse", "PostToolUse", "Stop")
 
 
 def claimed_hooks() -> dict:
     """Parse CLAUDE.md's Hook Reality table: event -> set of script names."""
-    text = CLAUDE_MD.read_text()
+    text = CLAUDE_MD.read_text(encoding="utf-8")
     claims = {}
     for line in text.splitlines():
         if not line.strip().startswith("|"):
@@ -35,7 +35,7 @@ def claimed_hooks() -> dict:
 
 
 def actual_hooks() -> dict:
-    settings = json.loads(SETTINGS.read_text())
+    settings = json.loads(SETTINGS.read_text(encoding="utf-8"))
     actual = {}
     for event, groups in settings.get("hooks", {}).items():
         scripts = set()

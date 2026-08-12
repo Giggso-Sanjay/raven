@@ -15,7 +15,7 @@ import sys
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent
-CANON = (REPO / "raven-core" / "VERSION").read_text().strip()
+CANON = (REPO / "raven-core" / "VERSION").read_text(encoding="utf-8").strip()
 
 # (path, how to extract the claimed current version)
 CHECKS = [
@@ -32,7 +32,21 @@ JSON_CHECKS = [
     ("plugin/plugin.json", "version"),
     ("plugin/.claude-plugin/plugin.json", "version"),
     (".raven/manifest.json", "version"),
+    # marketplace.json determines the version label users see at install time — it was
+    # the one place the v5.0.0 sweep missed, precisely because nothing checked it.
+    (".claude-plugin/marketplace.json", "version"),
+    (".claude-plugin/marketplace.json", "metadata.version"),
+    (".claude-plugin/marketplace.json", "plugins.0.version"),
 ]
+
+
+def _dig(obj, dotted: str):
+    """Resolve a dotted path; integer segments index into lists."""
+    for seg in dotted.split("."):
+        obj = obj[int(seg)] if seg.isdigit() else obj.get(seg, "")
+        if obj == "":
+            return ""
+    return obj
 
 
 def main() -> int:
@@ -42,7 +56,7 @@ def main() -> int:
         if not p.exists():
             failures.append(f"MISSING file with version claim: {rel}")
             continue
-        m = re.search(pattern, p.read_text(), re.MULTILINE)
+        m = re.search(pattern, p.read_text(encoding="utf-8"), re.MULTILINE)
         if not m:
             failures.append(f"NO current-version claim found in {rel} (pattern: {pattern})")
         elif m.group(1) != CANON:
@@ -53,7 +67,7 @@ def main() -> int:
         if not p.exists():
             continue  # manifest.json is per-install; plugin files must exist though
         try:
-            v = json.loads(p.read_text()).get(key, "")
+            v = _dig(json.loads(p.read_text(encoding="utf-8")), key)
         except Exception as e:
             failures.append(f"UNPARSEABLE {rel}: {e}")
             continue

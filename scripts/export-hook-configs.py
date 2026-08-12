@@ -49,6 +49,20 @@ GEN_NOTE = (
 )
 
 
+def _merge_extra_hooks(base: dict, extra: dict) -> dict:
+    """Append plugin-only matcher groups to the canonical ones for the same event.
+
+    A plain {**base, **extra} merge REPLACES the event's whole group list, which
+    silently dropped canonical's PreToolUse (push-gate.py) once that event existed.
+    Extras are additive by definition — concatenate, never overwrite.
+    """
+    merged = {event: list(groups) for event, groups in base.items()}
+    for event, groups in extra.items():
+        merged.setdefault(event, [])
+        merged[event] = merged[event] + list(groups)
+    return merged
+
+
 def _plugin_root_command(command: str) -> str:
     """Rewrite the canonical dual-fallback command to plugin-root form."""
     scripts = re.findall(r"([a-z0-9_-]+\.py)((?:\s+--?[a-z0-9-]+(?:\s+\d+)?)*)", command)
@@ -79,7 +93,7 @@ def build_outputs(canonical: dict) -> dict:
         "_generated": GEN_NOTE,
         "version": canonical.get("version", "1.0"),
         "description": canonical.get("description", ""),
-        "hooks": {**hooks, **PLUGIN_EXTRA_HOOKS},
+        "hooks": _merge_extra_hooks(hooks, PLUGIN_EXTRA_HOOKS),
         "permissions": canonical.get("permissions", {}),
         "governance": canonical.get("governance", {}),
     }
@@ -104,14 +118,14 @@ def build_outputs(canonical: dict) -> dict:
 
 def main() -> int:
     check = "--check" in sys.argv
-    canonical = json.loads(CANONICAL.read_text())
+    canonical = json.loads(CANONICAL.read_text(encoding="utf-8"))
     outputs = build_outputs(canonical)
 
     failures = []
     for path, data in outputs.items():
         rendered = json.dumps(data, indent=2) + "\n"
         if check:
-            on_disk = path.read_text() if path.exists() else ""
+            on_disk = path.read_text(encoding="utf-8") if path.exists() else ""
             if on_disk != rendered:
                 failures.append(f"DRIFTED from canonical: {path.relative_to(REPO)}")
         else:
