@@ -120,6 +120,85 @@ def test_verification_reports_unmeasured_not_verified():
         assert status == expect, f"{path_a}/{path_b} -> {status}, expected {expect}"
 
 
+NO_SID = [
+    {"type": "assistant",
+     "message": {"model": "claude-sonnet-5", "usage": _usage(100, 50)}},
+]
+
+
+def test_session_id_falls_back_to_the_hook_payload(tmp_path, monkeypatch):
+    """BUG-028: a transcript with no session_id left it "", which zeroed path A.
+
+    The hook payload always carries the real id; parse_transcript only learns one by
+    peeking the transcript. Without the fallback an empty id also skipped the
+    checkpoint write, making the next run re-read from line 0 — the b37f2ba
+    compounding path.
+    """
+    import subprocess
+    import sys as _sys
+    repo = tmp_path / "proj"
+    (repo / ".git").mkdir(parents=True)
+    (repo / ".raven").mkdir()
+    tpath = _transcript(repo, NO_SID)
+
+    m = _meter()
+    assert m.parse_transcript(tpath)["session_id"] == "", "fixture should lack a session_id"
+
+    env = dict(**{k: v for k, v in __import__("os").environ.items()})
+    env["CLAUDE_PROJECT_DIR"] = str(repo)
+    subprocess.run(
+        [_sys.executable, str(_ROOT / "scripts" / "token-meter-write.py")],
+        cwd=str(repo), env=env,
+        input=json.dumps({"session_id": "HOOK-SID", "transcript_path": tpath}),
+        capture_output=True, text=True, encoding="utf-8", timeout=30,
+    )
+    verdict = json.loads((repo / ".raven" / ".cost-verify.json").read_text(encoding="utf-8"))
+    assert verdict["session_id"] == "HOOK-SID", "hook session_id not used as fallback"
+    rows = [json.loads(l) for l in
+            (repo / ".raven" / "cost-log.jsonl").read_text(encoding="utf-8").splitlines() if l.strip()]
+    assert rows and all(r["session_id"] == "HOOK-SID" for r in rows)
+    checkpoint = json.loads(
+        (repo / ".raven" / ".token-meter-checkpoint.json").read_text(encoding="utf-8"))
+    assert checkpoint["session_id"] == "HOOK-SID", "checkpoint skipped — next run re-reads from 0"
+
+
+def test_indeterminate_is_not_reported_as_divergent(tmp_path):
+    """Path A with no basis must not assert a disagreement it never measured."""
+    m = _meter()
+    tpath = _transcript(tmp_path, CURRENT_SCHEMA)
+    m.COST_LOG.parent.mkdir(parents=True, exist_ok=True)
+
+    def verdict(session_id, rows):
+        m.COST_LOG.write_text("".join(json.dumps(r) + "\n" for r in rows), encoding="utf-8")
+        m.write_cost_verify(session_id, tpath, "2026-08-12T00:00:00Z")
+        return json.loads(m.COST_VERIFY.read_text(encoding="utf-8"))
+
+    other = [{"session_id": "s1", "computed_cost_usd": 3.0}]
+    assert verdict("", other)["status"] == "indeterminate", "empty session_id"
+    assert verdict("s9", other)["status"] == "indeterminate", "no rows for this session"
+
+    cost_b = m.full_transcript_totals(tpath)
+    agree = verdict("s1", [{"session_id": "s1", "computed_cost_usd": cost_b}])
+    assert agree["status"] == "verified" and agree["path_a_rows"] == 1
+    disagree = verdict("s1", [{"session_id": "s1", "computed_cost_usd": cost_b * 3}])
+    assert disagree["status"] == "divergent"
+
+
+def test_indeterminate_writes_no_disagreement_audit_row(tmp_path):
+    """The audit flag is gated on "divergent" — a false alarm trains people to ignore it."""
+    m = _meter()
+    tpath = _transcript(tmp_path, CURRENT_SCHEMA)
+    m.COST_LOG.parent.mkdir(parents=True, exist_ok=True)
+    m.COST_LOG.write_text(json.dumps({"session_id": "s1", "computed_cost_usd": 3.0}) + "\n",
+                          encoding="utf-8")
+    before = list(m.AUDIT_DIR.glob("*.log")) if m.AUDIT_DIR.exists() else []
+    sizes = {p: p.stat().st_size for p in before}
+    m.write_cost_verify("", tpath, "2026-08-12T00:00:00Z")
+    for p in (list(m.AUDIT_DIR.glob("*.log")) if m.AUDIT_DIR.exists() else []):
+        text = p.read_text(encoding="utf-8", errors="replace")[sizes.get(p, 0):]
+        assert "disagree" not in text, "indeterminate logged as a disagreement"
+
+
 def test_cost_verify_source_encodes_the_precondition():
     """Guard the fix in the script itself, not just the logic mirrored above."""
     src = (_ROOT / "scripts" / "token-meter-write.py").read_text(encoding="utf-8")

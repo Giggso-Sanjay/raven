@@ -680,15 +680,26 @@ def write_cost_verify(session_id: str, transcript_path: str, timestamp: str) -> 
         if path_b < 0:
             return
 
+        # Path A is only *computable* when we know which session's rows to sum.
+        # Without this, an empty session_id silently produced path_a = 0.0 and the
+        # verdict claimed "divergent" — asserting a disagreement that was never
+        # measured. Same error as BUG-027b, one case over: report what you know.
+        path_a_computable = bool(session_id)
         path_a = 0.0
-        if COST_LOG.exists():
+        matched_rows = 0
+        if path_a_computable and COST_LOG.exists():
             for line in COST_LOG.read_text(encoding="utf-8").splitlines():
                 try:
                     row = json.loads(line)
                 except json.JSONDecodeError:
                     continue
-                if session_id and row.get("session_id") == session_id:
+                if row.get("session_id") == session_id:
                     path_a += float(row.get("computed_cost_usd") or 0)
+                    matched_rows += 1
+        if path_a_computable and matched_rows == 0:
+            # Rows exist for other sessions but none for this one — nothing to
+            # compare against yet (first turn of a session), not a disagreement.
+            path_a_computable = False
 
         if path_b > 0:
             variance_pct = abs(path_a - path_b) / path_b * 100
@@ -701,7 +712,12 @@ def write_cost_verify(session_id: str, transcript_path: str, timestamp: str) -> 
         # between two absent measurements is not evidence; distinguish "the paths
         # agree" from "neither path has data".
         measured = path_a > 0 or path_b > 0
-        if not measured:
+        if not path_a_computable:
+            # Path A has no basis: no session_id to attribute rows to, or no rows for
+            # this session yet. Cannot claim agreement OR disagreement.
+            status = "indeterminate"
+            verified = False
+        elif not measured:
             status = "unmeasured"
             verified = False
         elif variance_pct <= VARIANCE_THRESHOLD_PCT:
@@ -717,13 +733,22 @@ def write_cost_verify(session_id: str, transcript_path: str, timestamp: str) -> 
             "status": status,
             "path_a_usd": round(path_a, 6),
             "path_a_method": "sum of per-turn checkpoint deltas (cost-log.jsonl)",
+            "path_a_rows": matched_rows,
             "path_b_usd": path_b,
             "path_b_method": "independent full-transcript recompute",
-            "variance_pct": round(variance_pct, 2),
+            "variance_pct": round(variance_pct, 2) if path_a_computable else None,
             "verified": verified,
             "threshold_pct": VARIANCE_THRESHOLD_PCT,
         }
-        if not measured:
+        if status == "indeterminate":
+            verdict["reason"] = (
+                "path A could not be computed: "
+                + ("no session_id available to attribute cost-log rows to."
+                   if not session_id else
+                   f"no cost-log rows match session {session_id}.")
+                + " Not a disagreement — there was nothing to compare."
+            )
+        elif not measured:
             verdict["reason"] = (
                 "both paths reported $0.00 — no usage was parsed from the transcript. "
                 "This is a metering failure, not agreement. Check that the Stop hook "
@@ -732,7 +757,7 @@ def write_cost_verify(session_id: str, transcript_path: str, timestamp: str) -> 
             )
         COST_VERIFY.write_text(json.dumps(verdict, indent=2) + "\n")
 
-        if not measured:
+        if not measured and path_a_computable:
             AUDIT_DIR.mkdir(parents=True, exist_ok=True)
             with (AUDIT_DIR / f"{datetime.utcnow():%Y-%m-%d}.log").open("a") as fh:
                 fh.write(json.dumps({
@@ -742,12 +767,16 @@ def write_cost_verify(session_id: str, transcript_path: str, timestamp: str) -> 
                     "detail": "UNMEASURED — both cost paths are $0.00; metering produced "
                               "no data this turn. Not a verification pass.",
                 }) + "\n")
-        elif not verified:
+        elif status == "divergent":
             # Loud in the audit log too — never silently average or hide.
+            # Gated on "divergent" specifically, not `not verified`: indeterminate is
+            # also unverified, and logging it as "paths disagree" would be a false
+            # alarm. A check that cries wolf gets ignored, which is how the original
+            # compounding bug survived as long as it did.
             AUDIT_DIR.mkdir(parents=True, exist_ok=True)
             ts = datetime.fromisoformat(timestamp.replace("Z", "+00:00"))
             log_file = AUDIT_DIR / f"{ts.strftime('%Y-%m-%d')}.log"
-            with open(log_file, "a") as f:
+            with open(log_file, "a", encoding="utf-8") as f:
                 f.write(json.dumps({
                     "timestamp": timestamp,
                     "event": "cost-verify-flag",
@@ -774,6 +803,15 @@ def main() -> None:
 
     # Parse transcript — only the delta since the last checkpoint
     metrics = parse_transcript(transcript_path)
+
+    # The hook payload's session_id is authoritative; parse_transcript only learns one
+    # by peeking the transcript for a session_id field, and when that peek finds nothing
+    # it leaves "". An empty id silently broke path A of the cost check (its filter is
+    # `if session_id and row["session_id"] == session_id`, so it summed zero rows) and
+    # also skipped the checkpoint write, which makes the next run re-read from line 0 —
+    # the compounding b37f2ba fixed. Fall back before anything consumes it. BUG-028.
+    if not metrics.get("session_id"):
+        metrics["session_id"] = hook_input.get("session_id", "") or ""
     metrics["project"] = _resolve_project_name()
     new_line_count = metrics.pop("_new_line_count", 0)
 
