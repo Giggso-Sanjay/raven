@@ -52,7 +52,7 @@ def parse_transcript(transcript_path: str):
     if not transcript_path or not pathlib.Path(transcript_path).exists():
         return files_written, files_read, bash_cmds, tool_counts, skills_used
     try:
-        with open(transcript_path) as f:
+        with open(transcript_path, "r", encoding="utf-8", errors="replace") as f:
             for line in f:
                 try:
                     entry = json.loads(line)
