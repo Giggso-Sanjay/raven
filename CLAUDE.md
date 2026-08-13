@@ -48,33 +48,47 @@ After any non-trivial action, end with what changed and what's next. No silent c
 
 ---
 
-## ✋ Educated Push Contract — ADVISORY (educational, never blocking)
+## ✋ Educated Push Contract — ENFORCED (blocked until you approve)
 
-Every change cycle should follow this loop. It is **taught, not enforced**:
-`push-gate.py` (PreToolUse) shows a one-time reminder on the first mutating
-action of each session, then allows everything. It never denies a tool call
-(user decision 2026-08-07: "educated is educational — it should not block").
+Mutating tool calls are **denied** until the user gives a go-ahead. `push-gate.py`
+(PreToolUse) returns `deny` with the briefing instructions; `push-approve.py`
+(UserPromptSubmit) records the approval, which opens the gate for **1 hour** or
+until your next non-approval message.
 
-An opt-in `guided` mode that denied until approval was added and then **removed
-at the user's request** (2026-08-13). It was never asked for, it reversed a
-decision made deliberately after `c8c5c2e`'s hard gate blocked its own
-diagnostics, and it produced two bugs of its own that existed only because a
-second mode existed. Reasons recorded in `bug-fix-log.md` BUG-023.
+This has moved three times and the reasons matter:
 
-Markers live in `.raven/` (`.push-notice-shown`, `.push-approved`,
-`.model-disclosed`) and are cleared by `push-gate.py --reset`, which SessionStart
-calls — one reset entry point using one root resolver. `.push-mode` is also
-cleared, so a leftover `guided` flag from the removed feature cannot linger.
+| | |
+|---|---|
+| `c8c5c2e` | hard gate — reverted one commit later; it denied its own `--status` probes and the very Edit needed to fix it |
+| `bb40ee0` | advisory only, never denies ("educated is educational") |
+| BUG-023 | opt-in `guided` mode — removed at the user's request |
+| **now** | **enforced by default, no modes** (2026-08-13, after advisory mode was ignored on every edit) |
+
+**Never denied**, so the gate can never trap you — each pinned by a test:
+
+- `.raven/` paths (relative or absolute) and `push-gate.py` / `push-approve.py`
+- Bash carrying those script names, or `--status` / `--reset`
+- all read-only Bash (`2>` / `2>>` are stderr silencing, not writes)
+- every non-mutating tool (`Read`, `Grep`, `Glob`, …)
+
+`sed -i` and similar are **not** in the read-only allowlist, so they are correctly
+gated — `c8c5c2e` let those through while blocking diagnostics.
+
+**Escape hatch:** `Lucky` is an approval keyword, so one message opens the gate for
+a turn. **Fail-open:** any internal error exits 0 without denying — a broken gate
+must never brick a session.
+
+Markers live in `.raven/` (`.push-approved`, plus vestigial `.push-mode` /
+`.push-notice-shown`) and are cleared by `push-gate.py --reset`, which SessionStart
+calls — one reset entry point using one root resolver.
 
 The loop Claude is expected to follow for non-trivial changes:
 
 1. **Briefing (max 200 words, bullets)** — before ANY change: WHAT will be
    done, HOW it works, WHAT will change (files, db, config). Then STOP.
 2. **Go-ahead** — user replies `go ahead` / `approved` / `GO` / `proceed`.
-   This **records** the approval in `.raven/.push-approved`. Nothing gates on it:
-   the gate always allows, so the flag is a record of consent, not a key. (The
-   previous wording — "opens the write gate" — described a gate that has not
-   existed since `bb40ee0`; corrected per Rule 5 rather than reinstated.)
+   This writes `.raven/.push-approved` and **opens the gate for 1 hour**. Until
+   then every mutating call is denied.
 3. **Execute** — do exactly what the briefing said. No scope creep.
 4. **Confirmation (max 150 words, bullets)** — what was done + changed files.
 5. **Reset** — any later user message that is not an approval clears the flag,
@@ -130,7 +144,7 @@ These are the **real Claude Code hooks** wired in this project. `PostEdit` and `
 |---|---|---|
 | `SessionStart` | New Claude session opens | `session-start.py` — brownfield/greenfield, models, manifest; embeds `vault-load.py` digest · plus `vault-load.py --hook` · plus `push-gate.py --reset` (clears `.push-mode` / `.push-approved` / `.push-notice-shown` using the gate's own root resolution) |
 | `UserPromptSubmit` | Every user message arrives | `triage-router.py` → `architect-router.py` → `model-router.py` → `cve-prompt-guard.py` → `push-approve.py` (parses approvals, sole cleaner of `.push-approved`) |
-| `PreToolUse` (matcher: `Write\|Edit\|MultiEdit\|NotebookEdit\|Bash`) | Before any mutating tool call | `push-gate.py` — Educated Push **advisory**: one-time `systemMessage` reminder on the first mutating action of a session, then silent. Always returns `allow`; there is no deny path |
+| `PreToolUse` (matcher: `Write\|Edit\|MultiEdit\|NotebookEdit\|Bash`) | Before any mutating tool call | `push-gate.py` — Educated Push **enforced**: returns `deny` with briefing instructions until a go-ahead is recorded (1h TTL). Read-only Bash, non-mutating tools, `.raven/` paths and the push scripts themselves are never denied |
 | `PostToolUse` (matcher: `Write\|Edit\|MultiEdit`) | After any file write/edit | `db-guard.py` (reads hook stdin natively) + `secret-scan.py` `--changed-files-only` (async) |
 | `Stop` | Fires at the end of every turn (not just session end) | `token-meter-write.py` → `token-guard.py` → `dashboard.py` `--if-stale 15` → `raven-xray.py` `--build --if-stale 15` → `obsidian-log.py` → `knowledge-extract.py` → `session-gate.py` (all async) |
 
