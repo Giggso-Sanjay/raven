@@ -1,12 +1,13 @@
-"""push-gate / push-approve must anchor to the repo root, not cwd (BUG-022).
+"""Approval state must anchor to the repo root, not cwd (BUG-022).
 
-Live failure this locks out: a session working in project B wrote
-.push-notice-shown into project A's .raven/, because repo_root() fell back to
-os.getcwd(). "Once per session" then tracked the wrong directory — the reminder
-could re-fire forever in the real project, or never fire because an unrelated
-project held the marker — and os.makedirs created a stray .raven/ tree.
+Originally written around .push-notice-shown, the advisory-era reminder marker.
+That marker is gone — enforcement replaced it — but the property it guarded is now
+more important, not less: `.push-approved` decides whether mutations are allowed,
+so if it lands in the wrong directory an approval given in project A can open the
+gate in project B, or a real approval can be invisible to the gate that needs it.
 
-Same bug class as 9de4131 (phantom guard/guard/.raven/), JOURNEY §8 lesson 1.
+Original defect: `os.environ.get("CLAUDE_PROJECT_DIR") or os.getcwd()`, with no
+`.git` walk — the cwd bug class of 9de4131 (the phantom guard/guard/.raven/).
 """
 import json
 import os
@@ -14,92 +15,91 @@ import pathlib
 import subprocess
 import sys
 
-import pytest
-
 _ROOT = pathlib.Path(__file__).parent.parent
 GATE = _ROOT / "scripts" / "push-gate.py"
-MARKER = ".push-notice-shown"
+APPROVE = _ROOT / "scripts" / "push-approve.py"
+FLAG = ".push-approved"
 
-
-def _run(cwd, env_root=None, argv=(), payload=None):
-    env = dict(os.environ)
-    env.pop("CLAUDE_PROJECT_DIR", None)
-    if env_root:
-        env["CLAUDE_PROJECT_DIR"] = str(env_root)
-    return subprocess.run(
-        [sys.executable, str(GATE), *argv], cwd=str(cwd), env=env,
-        input=json.dumps(payload) if payload is not None else "",
-        capture_output=True, text=True, encoding="utf-8", timeout=20,
-    )
+EDIT = {"tool_name": "Edit", "tool_input": {"file_path": "x.py"}, "session_id": "s1"}
 
 
 def _repo(tmp_path, name):
-    """A directory that looks like a git repo."""
     d = tmp_path / name
     (d / ".git").mkdir(parents=True)
     return d
 
 
-EDIT = {"tool_name": "Edit", "tool_input": {"file_path": "x.py"}, "session_id": "s1"}
+def _run(script, cwd, payload=None, env_root=None, argv=()):
+    env = dict(os.environ)
+    env.pop("CLAUDE_PROJECT_DIR", None)
+    if env_root:
+        env["CLAUDE_PROJECT_DIR"] = str(env_root)
+    return subprocess.run(
+        [sys.executable, str(script), *argv], cwd=str(cwd), env=env,
+        input=json.dumps(payload) if payload is not None else "",
+        capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=20,
+    )
 
 
-def test_marker_lands_in_the_repo_containing_cwd(tmp_path):
-    """Run from a SUBDIRECTORY with no env var — marker must go to the repo root."""
+def _decision(out):
+    s = out.stdout.strip()
+    return json.loads(s)["hookSpecificOutput"]["permissionDecision"] if s else "allow"
+
+
+def test_approval_lands_at_the_repo_root_from_a_subdirectory(tmp_path):
+    """Run from repo/src/deep with no env var — the flag must go to the repo root."""
     repo = _repo(tmp_path, "proj")
     nested = repo / "src" / "deep"
     nested.mkdir(parents=True)
 
-    assert _run(nested, payload=EDIT).returncode == 0
-    assert (repo / ".raven" / MARKER).is_file(), "marker not at repo root"
+    _run(APPROVE, nested, {"prompt": "go ahead", "session_id": "s1"})
+    assert (repo / ".raven" / FLAG).is_file(), "approval not at repo root"
     assert not (nested / ".raven").exists(), "stray .raven/ created in the subdirectory"
 
 
-def test_marker_does_not_leak_into_a_sibling_repo(tmp_path):
-    """The exact live failure: work in B, marker must not appear in A."""
+def test_the_gate_reads_the_same_root_it_was_written_to(tmp_path):
+    """Write from a subdirectory, read from another — the gate must still see it.
+
+    This is the failure that matters: a mismatch here means a real approval is
+    invisible and every mutation stays denied.
+    """
+    repo = _repo(tmp_path, "proj")
+    a = repo / "src"; a.mkdir()
+    b = repo / "tests"; b.mkdir()
+
+    assert _decision(_run(GATE, a, EDIT)) == "deny"
+    _run(APPROVE, a, {"prompt": "go ahead", "session_id": "s1"})
+    assert _decision(_run(GATE, b, EDIT)) == "allow", "approval written and read from different roots"
+
+
+def test_approval_does_not_leak_into_a_sibling_repo(tmp_path):
+    """Approving in B must not open the gate in A."""
     a = _repo(tmp_path, "project-a")
     b = _repo(tmp_path, "project-b")
 
-    assert _run(b, payload=EDIT).returncode == 0
-    assert (b / ".raven" / MARKER).is_file()
-    assert not (a / ".raven" / MARKER).exists(), "marker leaked into the wrong project"
+    _run(APPROVE, b, {"prompt": "go ahead", "session_id": "s1"})
+    assert (b / ".raven" / FLAG).is_file()
+    assert not (a / ".raven" / FLAG).exists(), "approval leaked into the wrong project"
+    assert _decision(_run(GATE, a, EDIT)) == "deny", "gate opened in an unapproved project"
 
 
 def test_env_var_wins_when_set(tmp_path):
     repo = _repo(tmp_path, "proj")
     other = _repo(tmp_path, "other")
 
-    assert _run(other, env_root=repo, payload=EDIT).returncode == 0
-    assert (repo / ".raven" / MARKER).is_file()
-    assert not (other / ".raven" / MARKER).exists()
-
-
-def test_reminder_fires_once_then_stays_silent(tmp_path):
-    repo = _repo(tmp_path, "proj")
-
-    first = _run(repo, payload=EDIT)
-    assert "Educated Push" in first.stdout
-    second = _run(repo, payload=EDIT)
-    assert second.stdout.strip() == "", "reminder repeated — marker not honoured"
+    _run(APPROVE, other, {"prompt": "go ahead", "session_id": "s1"}, env_root=repo)
+    assert (repo / ".raven" / FLAG).is_file()
+    assert not (other / ".raven" / FLAG).exists()
 
 
 def test_reset_clears_using_the_same_resolver(tmp_path):
-    """--reset must delete the marker repo_root() would have written."""
+    """--reset from a subdirectory must delete the flag repo_root() would have written."""
     repo = _repo(tmp_path, "proj")
-    nested = repo / "src"
-    nested.mkdir()
+    nested = repo / "src"; nested.mkdir()
 
-    _run(nested, payload=EDIT)
-    assert (repo / ".raven" / MARKER).is_file()
+    _run(APPROVE, nested, {"prompt": "go ahead", "session_id": "s1"})
+    assert (repo / ".raven" / FLAG).is_file()
 
-    _run(nested, argv=("--reset",))
-    assert not (repo / ".raven" / MARKER).exists(), "--reset missed the real marker"
-    # and the reminder is available again next session
-    assert "Educated Push" in _run(nested, payload=EDIT).stdout
-
-
-def test_gate_never_denies(tmp_path):
-    """Educated Push is advisory (bb40ee0) — no deny path may reappear."""
-    repo = _repo(tmp_path, "proj")
-    out = _run(repo, payload=EDIT).stdout
-    assert "deny" not in out
-    assert json.loads(out)["hookSpecificOutput"]["permissionDecision"] == "allow"
+    _run(GATE, nested, argv=("--reset",))
+    assert not (repo / ".raven" / FLAG).exists(), "--reset missed the real flag"
+    assert _decision(_run(GATE, nested, EDIT)) == "deny", "gate still open after reset"
