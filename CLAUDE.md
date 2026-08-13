@@ -48,34 +48,33 @@ After any non-trivial action, end with what changed and what's next. No silent c
 
 ---
 
-## ✋ Educated Push Contract — ADVISORY by default, enforced on request
+## ✋ Educated Push Contract — ADVISORY (educational, never blocking)
 
-Two modes, chosen per session. **Advisory is the default** — the 2026-08-07
-decision ("educated is educational — it should not block") governs every session
-that has not explicitly opted in.
+Every change cycle should follow this loop. It is **taught, not enforced**:
+`push-gate.py` (PreToolUse) shows a one-time reminder on the first mutating
+action of each session, then allows everything. It never denies a tool call
+(user decision 2026-08-07: "educated is educational — it should not block").
 
-| Mode | How to set | Behaviour |
-|---|---|---|
-| **auto / unset** (default) | nothing to do | `push-gate.py` shows a one-time reminder on the first mutating action, then stays silent. **Never denies.** |
-| **guided** (opt-in) | say `guided` | Mutations are **denied** until you reply `go ahead` / `approved` / `GO` / `proceed`. Approval expires after 1 hour. Say `auto` to leave. |
+An opt-in `guided` mode that denied until approval was added and then **removed
+at the user's request** (2026-08-13). It was never asked for, it reversed a
+decision made deliberately after `c8c5c2e`'s hard gate blocked its own
+diagnostics, and it produced two bugs of its own that existed only because a
+second mode existed. Reasons recorded in `bug-fix-log.md` BUG-023.
 
-Guided mode carries a **self-exemption** so it can never lock you out of
-repairing it — `.raven/` paths, `push-gate.py` / `push-approve.py`, Bash commands
-touching those scripts or carrying `--status` / `--reset`, and all read-only Bash
-always pass. Those were exactly the bugs that forced `c8c5c2e` to be reverted
-(it denied its own diagnostics, counted `2>/dev/null` as a write, and blocked the
-Edit needed to fix itself).
-
-Markers live in `.raven/` (`.push-notice-shown`, `.push-mode`, `.push-approved`,
+Markers live in `.raven/` (`.push-notice-shown`, `.push-approved`,
 `.model-disclosed`) and are cleared by `push-gate.py --reset`, which SessionStart
-calls — one reset entry point using one root resolver.
+calls — one reset entry point using one root resolver. `.push-mode` is also
+cleared, so a leftover `guided` flag from the removed feature cannot linger.
 
 The loop Claude is expected to follow for non-trivial changes:
 
 1. **Briefing (max 200 words, bullets)** — before ANY change: WHAT will be
    done, HOW it works, WHAT will change (files, db, config). Then STOP.
 2. **Go-ahead** — user replies `go ahead` / `approved` / `GO` / `proceed`.
-   This creates `.raven/.push-approved` and opens the write gate.
+   This **records** the approval in `.raven/.push-approved`. Nothing gates on it:
+   the gate always allows, so the flag is a record of consent, not a key. (The
+   previous wording — "opens the write gate" — described a gate that has not
+   existed since `bb40ee0`; corrected per Rule 5 rather than reinstated.)
 3. **Execute** — do exactly what the briefing said. No scope creep.
 4. **Confirmation (max 150 words, bullets)** — what was done + changed files.
 5. **Reset** — any later user message that is not an approval clears the flag,
