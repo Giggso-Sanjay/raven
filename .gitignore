@@ -18,6 +18,13 @@ local/
 *.local.md
 docs/APPLY-PROMPT-vault-graph-memory.md
 
+# Feature docs + upgrade journey — kept LOCAL by owner decision (2026-08-13).
+# Untracked, not deleted: the files stay on disk and are still required by
+# open_raven/CLAUDE.md Rule A. Consequence accepted — a fresh clone cannot trace
+# these features from trigger to effect. Re-track with `git add -f <path>`.
+docs/features/
+docs/JOURNEY-4.2-to-5.0.md
+
 # Raven secrets — NEVER commit
 .raven/manifest.secrets.json
 **/manifest.secrets.json
