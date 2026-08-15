@@ -22,7 +22,7 @@ No secrets. No network. Local markdown only.
 1. Ensure hub exists (writer does this too):
 
 ```bash
-python3 "${CLAUDE_PROJECT_DIR:-.}/scripts/vault-load.py" 2>/dev/null \
+python3 "${CLAUDE_PROJECT_DIR:-.}/scripts/memory/vault-load.py" 2>/dev/null \
   || python3 "${CLAUDE_PROJECT_DIR:-.}/.claude/scripts/vault-load.py" 2>/dev/null \
   || true
 ```
@@ -38,8 +38,8 @@ python3 "${CLAUDE_PROJECT_DIR:-.}/scripts/vault-load.py" 2>/dev/null \
 1. Prefer Stop hooks (`obsidian-log.py`, `knowledge-extract.py`). If hooks did not run:
 
 ```bash
-python3 scripts/obsidian-log.py </dev/null 2>/dev/null || true
-python3 scripts/knowledge-extract.py --quiet 2>/dev/null || true
+python3 scripts/memory/obsidian-log.py </dev/null 2>/dev/null || true
+python3 scripts/memory/knowledge-extract.py --quiet 2>/dev/null || true
 python3 scripts/knowledge_graph.py 2>/dev/null || true
 ```
 
@@ -56,7 +56,7 @@ python3 scripts/knowledge_graph.py 2>/dev/null || true
 
 ```bash
 mkdir -p .raven/memory
-python3 scripts/vault-load.py > .raven/memory/last-digest.md 2>/dev/null || true
+python3 scripts/memory/vault-load.py > .raven/memory/last-digest.md 2>/dev/null || true
 ```
 
 ---

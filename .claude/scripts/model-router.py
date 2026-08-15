@@ -1,1 +1,1 @@
-../../scripts/model-router.py
+../../scripts/routing/model-router.py

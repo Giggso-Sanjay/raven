@@ -518,9 +518,10 @@ def format_context(project: dict, providers: list[dict], routing: dict, model_en
             lines.append("   💾  Memory: RavenVault empty for this project — first session will create hub + notes")
         lines.append("   📂  Vault: ~/RavenVault (sessions · projects · concepts · decisions)")
         try:
-            _sd = Path(__file__).resolve().parent
-            if str(_sd) not in sys.path:
-                sys.path.insert(0, str(_sd))
+            for _sd in (Path(__file__).resolve().parent,
+                        Path(__file__).resolve().parent.parent / 'memory'):
+                if str(_sd) not in sys.path:
+                    sys.path.insert(0, str(_sd))
             from vault_common import dashboard_link_lines  # noqa: E402
 
             for _ln in dashboard_link_lines(when="always visible"):

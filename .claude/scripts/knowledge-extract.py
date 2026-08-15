@@ -1,1 +1,1 @@
-../../scripts/knowledge-extract.py
+../../scripts/memory/knowledge-extract.py

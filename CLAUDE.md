@@ -132,7 +132,7 @@ This is the truth. There is no `PostEdit` event in Claude Code. There is no `Pre
 
 ## ✉️ Notifications — SMTP + Slack (Wired)
 
-**Script:** `scripts/notify.py` — fires from the git pre-commit hook on every pass or block.
+**Script:** `scripts/ops/notify.py` — fires from the git pre-commit hook on every pass or block.
 
 **Config:** `.raven/manifest.secrets.json` (gitignored). Copy from `.raven/manifest.secrets.json.template`.
 
@@ -151,7 +151,7 @@ This is the truth. There is no `PostEdit` event in Claude Code. There is no `Pre
 
 **Test it:**
 ```bash
-python3 scripts/notify.py --event=commit --test --detail="Verifying SMTP"
+python3 scripts/ops/notify.py --event=commit --test --detail="Verifying SMTP"
 ```
 
 ---
@@ -257,7 +257,7 @@ If **missing** → run `python3 .claude/scripts/sr-detect-workmode.py .` then of
 
 CLAUDE.md install is **append-only — Raven NEVER deletes your content.**
 
-Upgrades use `scripts/install-claudemd.py` which:
+Upgrades use `scripts/ops/install-claudemd.py` which:
 - **Prepends** the new Raven block at the TOP of the file, wrapped in versioned markers:
   ```
   <!-- RAVEN PROJECT CONFIG vX.Y.Z BEGIN -->
@@ -271,7 +271,7 @@ Upgrades use `scripts/install-claudemd.py` which:
 
 To upgrade manually:
 ```bash
-python3 scripts/install-claudemd.py --source path/to/new/CLAUDE.md --target ./CLAUDE.md
+python3 scripts/ops/install-claudemd.py --source path/to/new/CLAUDE.md --target ./CLAUDE.md
 ```
 
 ---

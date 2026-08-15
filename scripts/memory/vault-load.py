@@ -21,6 +21,10 @@ _SCRIPT_DIR = pathlib.Path(__file__).resolve().parent
 if str(_SCRIPT_DIR) not in sys.path:
     sys.path.insert(0, str(_SCRIPT_DIR))
 
+_HERE = __import__('pathlib').Path(__file__).resolve().parent
+for _d in (_HERE, _HERE.parent / 'memory', _HERE.parent / 'routing'):
+    if str(_d) not in sys.path:
+        sys.path.insert(0, str(_d))
 from vault_common import (  # noqa: E402
     CONCEPTS,
     DECISIONS,

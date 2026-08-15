@@ -18,6 +18,10 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+for _d in (__import__('pathlib').Path(__file__).resolve().parent.parent / 'memory',
+           __import__('pathlib').Path(__file__).resolve().parent.parent / 'routing'):
+    if str(_d) not in sys.path:
+        sys.path.insert(0, str(_d))
 try:
     from router_common import force_intent, semantic_fallback, log_overhead
 except Exception:  # fail-soft: routing still works without the shared helper

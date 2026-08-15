@@ -20,6 +20,9 @@ if str(_SCRIPT_DIR) not in sys.path:
 
 def _dashboard_block(when: str = "session end") -> list[str]:
     try:
+        _mem = _SCRIPT_DIR.parent / "memory"
+        if str(_mem) not in sys.path:
+            sys.path.insert(0, str(_mem))
         from vault_common import dashboard_link_lines
 
         return dashboard_link_lines(when=when)

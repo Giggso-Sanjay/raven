@@ -22,6 +22,10 @@ for _d in (str(_PKG_DIR), str(_SCRIPT_DIR)):
     if _d not in sys.path:
         sys.path.insert(0, _d)
 
+_HERE = __import__('pathlib').Path(__file__).resolve().parent
+for _d in (_HERE, _HERE.parent / 'memory', _HERE.parent / 'routing'):
+    if str(_d) not in sys.path:
+        sys.path.insert(0, str(_d))
 from vault_common import (  # noqa: E402
     CONCEPTS,
     DECISIONS,

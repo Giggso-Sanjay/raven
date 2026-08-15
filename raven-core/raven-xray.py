@@ -1,1 +1,1 @@
-../scripts/raven-xray.py
+../scripts/session/raven-xray.py

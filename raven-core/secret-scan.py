@@ -1,1 +1,1 @@
-../scripts/secret-scan.py
+../scripts/guards/secret-scan.py

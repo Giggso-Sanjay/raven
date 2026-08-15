@@ -1,1 +1,1 @@
-../scripts/raven-dashboard.py
+../scripts/ops/raven-dashboard.py

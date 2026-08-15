@@ -1,1 +1,1 @@
-../scripts/session-start.py
+../scripts/session/session-start.py

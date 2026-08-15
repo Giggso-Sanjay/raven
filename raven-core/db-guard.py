@@ -1,1 +1,1 @@
-../scripts/db-guard.py
+../scripts/guards/db-guard.py

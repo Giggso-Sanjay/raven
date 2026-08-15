@@ -1,1 +1,1 @@
-../../scripts/emit-violation.py
+../../scripts/guards/emit-violation.py
