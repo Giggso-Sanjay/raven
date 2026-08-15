@@ -2323,7 +2323,12 @@ def render_knowledge_graph_section(
       const url = b.repo_url || '';
       const st = b.stats || {{}};
       const costShow = st.cost_display || st.cost_usd || '0';
+      const treeName = b.type === 'project' ? b.label : (b.project || '');
+      if (treeName && window.openCodeTree) {{ openCodeTree(treeName, true); }}
       let actions = '<div style="margin-top:14px;display:flex;flex-wrap:wrap;gap:8px;">';
+      if (treeName) {{
+        actions += '<a class="download" style="background:#1d4ed8;text-decoration:none;margin:0;cursor:pointer;" onclick="window.openCodeTree && openCodeTree(\\''+esc(treeName)+'\\')">🌳 Code tree</a>';
+      }}
       if (url) {{
         actions += '<a class="download" style="background:#10b981;text-decoration:none;margin:0;" href="'+esc(url)+'" target="_blank" rel="noopener">↗ GitHub</a>';
       }}
@@ -2819,16 +2824,6 @@ def render_html(
 
 %%STATUS_STRIP%%
 
-  <details open id="code-tree" style="background:#1e3a5f;border-radius:8px;margin-bottom:14px;">
-    <summary style="color:#bfdbfe;padding:10px 14px;font-size:14px;cursor:pointer;">
-      🌳 <strong>Code Tree</strong> — what the codebase looks like and why files changed
-      <span style="color:#93c5fd;">(zoom with scroll · drag to pan · click folders)</span> ·
-      <a href="code-tree.html" style="color:#93c5fd;">Open full page ↗</a>
-    </summary>
-    <iframe src="code-tree.html" style="width:100%;height:640px;border:0;border-radius:0 0 8px 8px;background:#12161c;"
-      title="Raven Code Tree"></iframe>
-  </details>
-
   <details style="margin-bottom:14px;">
     <summary style="cursor:pointer;color:#94a3b8;font-size:14px;padding:6px 0;">
       📋 Project metadata — {metadata['project']} · branch {metadata['git_branch'] or '—'} ·
@@ -2849,6 +2844,8 @@ def render_html(
   </details>
 
   {kg_section}
+
+%%CODE_TREE_SECTION%%
 
   {render_code_map_section(metadata)}
 
@@ -2933,7 +2930,7 @@ def render_html(
         badge = "" if active_30d else " <span style='color:#64748b;font-size:11px'>(idle)</span>"
         bp_rows += (
             f"<tr class='repo-row' data-active='{1 if active_30d else 0}' "
-            f"style='cursor:pointer;{dim}' onclick=\"window.kgShowNode && window.kgShowNode('projects/{pname}')\">"
+            f"style='cursor:pointer;{dim}' onclick=\"window.kgShowNode && window.kgShowNode('projects/{pname}'); window.openCodeTree && openCodeTree('{pname}')\">"
             f"<td><a href='{url}' target='_blank' rel='noopener' onclick='event.stopPropagation()'>{pname}</a>{badge} {c1}{c5}</td>"
             f"<td>{touch or '—'}</td>"
             f"<td class='num'>{st.get('sessions',0)} {c1}</td>"
@@ -3004,6 +3001,64 @@ def render_html(
     </div>
   </div>"""
     html = html.replace("%%STATUS_STRIP%%", status_strip)
+
+    # ── Code Tree section: repo-aware switcher next to the knowledge graph ──
+    # Kick off tree builds for active repos with local clones (async, fail-soft).
+    ct_script = Path(__file__).resolve().parent / "code-tree.py"
+    for _t, pname, _st, active_30d in repo_entries:
+        if not active_30d or not ct_script.exists():
+            continue
+        lp = resolve_local_path(pname, "")
+        if lp and Path(lp, ".git").exists() and not (VAULT / f"code-tree-{Path(lp).name}.html").exists():
+            try:
+                subprocess.Popen(
+                    [sys.executable, str(ct_script), "--repo", lp, "--build", "--html"],
+                    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True,
+                )
+            except Exception:
+                pass
+    tree_pages = sorted(p.name for p in VAULT.glob("code-tree*.html"))
+    cur_repo_name = metadata.get("project") or "raven"
+    default_tree = f"code-tree-{cur_repo_name}.html"
+    if default_tree not in tree_pages:
+        matches = [p for p in tree_pages if p.lower() == default_tree.lower()]
+        default_tree = matches[0] if matches else default_tree
+        if default_tree not in tree_pages: default_tree = "code-tree.html"
+    tree_opts = "".join(
+        f"<option value='{p}' {'selected' if p == default_tree else ''}>{p.replace('code-tree-','').replace('.html','')}</option>"
+        for p in tree_pages
+    ) or f"<option value='code-tree.html' selected>{cur_repo_name}</option>"
+    code_tree_section = f"""
+  <details open id="code-tree" style="background:#1e3a5f;border-radius:8px;margin:14px 0;">
+    <summary style="color:#bfdbfe;padding:10px 14px;font-size:14px;cursor:pointer;">
+      🌳 <strong>Code Tree</strong> — repo:
+      <select id="treeRepo" onclick="event.stopPropagation()" onchange="openCodeTree(this.value)"
+        style="background:#0f2440;color:#bfdbfe;border:1px solid #334155;border-radius:4px;padding:2px 6px;">{tree_opts}</select>
+      <span style="color:#93c5fd;">(zoom with scroll · drag to pan · click folders)</span> ·
+      <a id="treeFull" href="{default_tree}" style="color:#93c5fd;" onclick="event.stopPropagation()">Open full page ↗</a>
+      <span id="treeMissing" style="color:#fbbf24;display:none;">— no tree built for this repo yet</span>
+    </summary>
+    <iframe id="treeFrame" src="{default_tree}" style="width:100%;height:640px;border:0;border-radius:0 0 8px 8px;background:#12161c;"
+      title="Raven Code Tree"></iframe>
+  </details>
+  <script>
+    var TREE_PAGES = {json.dumps(tree_pages)};
+    function openCodeTree(sel, noScroll) {{
+      var page = sel.endsWith('.html') ? sel : ('code-tree-' + sel + '.html');
+      var hit = TREE_PAGES.find(function(x){{ return x.toLowerCase() === page.toLowerCase(); }});
+      if (hit) page = hit;
+      var missing = !hit && page !== 'code-tree.html';
+      document.getElementById('treeMissing').style.display = missing ? '' : 'none';
+      if (missing) return;
+      document.getElementById('treeFrame').src = page;
+      document.getElementById('treeFull').href = page;
+      var dd = document.getElementById('treeRepo');
+      if (dd && dd.value !== page) dd.value = page;
+      document.getElementById('code-tree').open = true;
+      if (!noScroll) document.getElementById('code-tree').scrollIntoView({{behavior:'smooth', block:'start'}});
+    }}
+  </script>"""
+    html = html.replace("%%CODE_TREE_SECTION%%", code_tree_section)
 
     # Bibliography HTML
     bib_rows = ""

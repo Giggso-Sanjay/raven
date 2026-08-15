@@ -473,6 +473,10 @@ function hl(s){{document.querySelectorAll('.prog').forEach(d=>{{
 </script></body></html>"""
     HTML_PATH.parent.mkdir(parents=True, exist_ok=True)
     HTML_PATH.write_text(page)
+    # Uniform per-repo name so the dashboard switcher can address every tree
+    named = VAULT / f"code-tree-{tree['repo']}.html"
+    if named != HTML_PATH:
+        named.write_text(page)
     if open_after:
         subprocess.Popen(["open", str(HTML_PATH)])
     return HTML_PATH
@@ -495,7 +499,17 @@ def main() -> None:
     ap.add_argument("--session", default=None)
     ap.add_argument("--commit", default=None)
     ap.add_argument("--for-prompt", default=None)
+    ap.add_argument("--repo", default=None, help="build for another repo root (writes code-tree-<name>.html)")
     args = ap.parse_args()
+
+    if args.repo:
+        global REPO, TREE_PATH, HTML_PATH
+        REPO = pathlib.Path(args.repo).resolve()
+        if not (REPO / ".git").exists():
+            print(f"code-tree: {REPO} is not a git repo", file=sys.stderr)
+            return
+        TREE_PATH = REPO / ".raven" / "code-tree.json"
+        HTML_PATH = VAULT / f"code-tree-{REPO.name}.html"
 
     if args.build:
         t = build()
