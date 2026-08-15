@@ -2892,9 +2892,31 @@ def render_html(
         cite_chip("C8"),
     )
 
-    # Per-repo mini table for headline area
+    # Per-repo mini table — ALL vault repos, ordered by latest activity,
+    # with a 30d-active filter toggle (metered repos = bp; rest from hubs).
+    def _last_touch(pname: str) -> str:
+        best = 0.0
+        for cand in [VAULT / "projects" / f"{pname}.md"] + sorted(
+            (VAULT / "sessions").glob(f"*-{pname}.md")
+        ):
+            try:
+                best = max(best, cand.stat().st_mtime)
+            except OSError:
+                pass
+        return datetime.fromtimestamp(best).strftime("%Y-%m-%d %H:%M") if best else ""
+
+    all_repo_names = {p.stem for p in (VAULT / "projects").glob("*.md")} | set(bp.keys())
+    repo_entries = []
+    for pname in all_repo_names:
+        touch = _last_touch(pname)
+        active_30d = bool(bp.get(pname)) or (
+            touch >= (datetime.now() - timedelta(days=30)).strftime("%Y-%m-%d")
+        )
+        repo_entries.append((touch, pname, bp.get(pname) or {}, active_30d))
+    repo_entries.sort(reverse=True)  # latest touch first
+
     bp_rows = ""
-    for pname, st in bp.items():
+    for touch, pname, st, active_30d in repo_entries:
         url = f"https://github.com/giggsoinc/{pname}"
         local = ""
         hub = VAULT / "projects" / f"{pname}.md"
@@ -2907,9 +2929,13 @@ def render_html(
                 pass
         local = resolve_local_path(pname, hub_txt)
         local_html = _local_link_html(local, "Local")
+        dim = "" if active_30d else "opacity:.5;"
+        badge = "" if active_30d else " <span style='color:#64748b;font-size:11px'>(idle)</span>"
         bp_rows += (
-            f"<tr style='cursor:pointer' onclick=\"window.kgShowNode && window.kgShowNode('projects/{pname}')\">"
-            f"<td><a href='{url}' target='_blank' rel='noopener' onclick='event.stopPropagation()'>{pname}</a> {c1}{c5}</td>"
+            f"<tr class='repo-row' data-active='{1 if active_30d else 0}' "
+            f"style='cursor:pointer;{dim}' onclick=\"window.kgShowNode && window.kgShowNode('projects/{pname}')\">"
+            f"<td><a href='{url}' target='_blank' rel='noopener' onclick='event.stopPropagation()'>{pname}</a>{badge} {c1}{c5}</td>"
+            f"<td>{touch or '—'}</td>"
             f"<td class='num'>{st.get('sessions',0)} {c1}</td>"
             f"<td class='num'>{int(st.get('tokens',0)):,} {c1}</td>"
             f"<td class='num'>{format_usd(st.get('cost_usd',0))} {c1}</td>"
@@ -2921,7 +2947,7 @@ def render_html(
         )
     if not bp_rows:
         bp_rows = (
-            "<tr><td colspan='5' style='color:#94a3b8'>"
+            "<tr><td colspan='6' style='color:#94a3b8'>"
             "No per-repo metrics in window yet (no project-tagged rows in C1)."
             "</td></tr>"
         )
@@ -3082,12 +3108,17 @@ def render_html(
   </div>
 
   <h3 style="color:#94a3b8;margin:20px 0 8px;font-size:14px;">
-    Per-repo in window {c1}{c5} (click row → graph briefing / agent memory hub)
+    All repos — ordered by latest activity {c1}{c5} (click row → graph briefing / agent memory hub)
+    <label style="float:right;font-weight:400;cursor:pointer;">
+      <input type="checkbox" id="active30" checked
+        onchange="document.querySelectorAll('.repo-row').forEach(function(r){{r.style.display=(this.checked&&r.dataset.active==='0')?'none':'';}},this)"> active last 30d only
+    </label>
   </h3>
   <table>
     <thead>
       <tr>
         <th>Repo {c5}</th>
+        <th>Last activity</th>
         <th class="num">Sessions {c1}</th>
         <th class="num">Tokens {c1}</th>
         <th class="num">Cost {c1}</th>
