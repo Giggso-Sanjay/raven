@@ -358,15 +358,19 @@ h1{{font-size:1.3rem}}summary{{cursor:pointer;padding:.2rem 0}}
 .dim{{color:#5a6878}}code{{background:#232c38;padding:0 .3em;border-radius:3px}}
 .hl>summary{{background:#243447;border-radius:4px}}
 .toolbar{{margin:1rem 0}}select{{background:#1a212b;color:#e2e8f0;border:1px solid #2a3340;padding:.3em;border-radius:4px}}
+.zb{{background:#1a212b;color:#e2e8f0;border:1px solid #3a4656;border-radius:4px;width:34px;height:28px;cursor:pointer;font-size:14px}}
+.zb:hover{{background:#243447}}.zb:last-child{{width:auto;padding:0 .5em}}
 </style></head><body>
 <h1>🌳 Raven Code Tree — {html.escape(tree['repo'])}</h1>
 <p class='dim'>Generated {html.escape(tree['generated_at'])} · source: .raven/code-tree.json · deterministic (AST + git, no LLM)
 · <a style='color:#4a90d9' href='dashboard.html'>← dashboard</a></p>
 <div class='toolbar'>Session overlay: <select id='sess' onchange='hl(this.value)'>
 <option value=''>— none —</option>{opts}</select></div>
-<h2 style='font-size:1.05rem'>Graph view <span class='dim' style='font-weight:400'>(click a folder node to expand/collapse · hover for purpose + last why)</span></h2>
-<div id='gwrap' style='overflow:auto;background:#0e1218;border:1px solid #2a3340;border-radius:8px;margin-bottom:1.5rem'>
-<svg id='g' xmlns='http://www.w3.org/2000/svg'></svg></div>
+<h2 style='font-size:1.05rem'>Graph view <span class='dim' style='font-weight:400'>(scroll = zoom at cursor · drag = pan · click folder = expand/collapse · hover = purpose + why)</span></h2>
+<div id='gwrap' style='overflow:hidden;background:#0e1218;border:1px solid #2a3340;border-radius:8px;margin-bottom:1.5rem;position:relative;height:72vh'>
+<div style='position:absolute;top:8px;right:8px;z-index:2;display:flex;gap:4px'>
+<button class='zb' onclick='zoomBy(1.4)'>＋</button><button class='zb' onclick='zoomBy(1/1.4)'>－</button><button class='zb' onclick='zoomFit()'>⤢ fit</button></div>
+<svg id='g' xmlns='http://www.w3.org/2000/svg' style='width:100%;height:100%;cursor:grab'><g id='vp'></g></svg></div>
 <div id='tip' style='display:none;position:fixed;background:#1a212b;border:1px solid #3a4656;border-radius:6px;padding:.5rem .7rem;font-size:.8rem;max-width:380px;pointer-events:none;z-index:9'></div>
 <h2 style='font-size:1.05rem'>Explorer view</h2>
 {body}
@@ -375,8 +379,29 @@ const DATA={graph_json};
 const COLORS={{guard:'#e05252',router:'#e0a030',hook:'#4a90d9',skill:'#9b6dd6',script:'#8a949e',doc:'#5aa87a','':'#5f6b78'}};
 (function(){{
  DATA.open=true; if(DATA.children) DATA.children.forEach(c=>c.open=true);
- const svg=document.getElementById('g'), tip=document.getElementById('tip');
+ const svg=document.getElementById('g'), vp=document.getElementById('vp'), tip=document.getElementById('tip');
  const ROW=20, COL=190, PAD=30;
+ let tx=0, ty=0, sc=1, extent={{w:900,h:400}};
+ function apply(){{ vp.setAttribute('transform',`translate(${{tx}},${{ty}}) scale(${{sc}})`); }}
+ window.zoomBy=function(f,cx,cy){{
+  const r=svg.getBoundingClientRect();
+  cx=(cx===undefined)?r.width/2:cx; cy=(cy===undefined)?r.height/2:cy;
+  const ns=Math.min(6,Math.max(0.08,sc*f));
+  tx=cx-(cx-tx)*(ns/sc); ty=cy-(cy-ty)*(ns/sc); sc=ns; apply();
+ }};
+ window.zoomFit=function(){{
+  const r=svg.getBoundingClientRect();
+  sc=Math.min(6,Math.max(0.08,Math.min(r.width/extent.w,r.height/extent.h)));
+  tx=(r.width-extent.w*sc)/2; ty=(r.height-extent.h*sc)/2; apply();
+ }};
+ svg.addEventListener('wheel',e=>{{ e.preventDefault();
+  const r=svg.getBoundingClientRect();
+  zoomBy(e.deltaY<0?1.15:1/1.15, e.clientX-r.left, e.clientY-r.top);
+ }},{{passive:false}});
+ let drag=null;
+ svg.addEventListener('mousedown',e=>{{ drag={{x:e.clientX-tx,y:e.clientY-ty}}; svg.style.cursor='grabbing'; }});
+ window.addEventListener('mousemove',e=>{{ if(drag){{ tx=e.clientX-drag.x; ty=e.clientY-drag.y; apply(); }} }});
+ window.addEventListener('mouseup',()=>{{ drag=null; svg.style.cursor='grab'; }});
  function layout(){{
   let y=0; const nodes=[], links=[];
   (function walk(n,depth,parent){{
@@ -392,9 +417,9 @@ const COLORS={{guard:'#e05252',router:'#e0a030',hook:'#4a90d9',skill:'#9b6dd6',s
   return {{nodes:nodes,links:links,h:PAD*2+y*ROW,w:PAD*2+(Math.max(...nodes.map(m=>m.depth))+1)*COL}};
  }}
  function esc(s){{return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;');}}
- function render(){{
+ function render(keepView){{
   const L=layout();
-  svg.setAttribute('width',Math.max(L.w,900)); svg.setAttribute('height',Math.max(L.h,120));
+  extent={{w:Math.max(L.w,900),h:Math.max(L.h,120)}};
   let out='';
   for(const [a,b] of L.links)
    out+=`<path d='M${{a.x+6}} ${{a.y}} C ${{(a.x+b.x)/2}} ${{a.y}}, ${{(a.x+b.x)/2}} ${{b.y}}, ${{b.x-6}} ${{b.y}}' fill='none' stroke='#2e3a49' stroke-width='1.2'/>`;
@@ -406,10 +431,11 @@ const COLORS={{guard:'#e05252',router:'#e0a030',hook:'#4a90d9',skill:'#9b6dd6',s
     (n.churn?`<circle r='${{r+3}}' fill='none' stroke='#e0a030' stroke-width='1'/>`:'')+
     `<text x='${{r+5}}' y='4' fill='${{isDir?'#a8e0dc':'#c4cfdb'}}' font-size='11'>${{esc(n.id)}}${{isDir?(n.open?'':' ▸ ('+n.children.length+')'):''}}</text></g>`;
   }});
-  svg.innerHTML=out;
-  svg.querySelectorAll('.nd').forEach(g=>{{
+  vp.innerHTML=out;
+  if(!keepView) zoomFit();
+  vp.querySelectorAll('.nd').forEach(g=>{{
    const m=L.nodes[+g.dataset.i], n=m.n;
-   g.onclick=()=>{{ if(n.children){{n.open=!n.open; render();}} }};
+   g.onclick=()=>{{ if(n.children){{n.open=!n.open; render(true);}} }};
    g.onmousemove=e=>{{ tip.style.display='block'; tip.style.left=(e.clientX+14)+'px'; tip.style.top=(e.clientY+10)+'px';
     tip.innerHTML=`<b>${{esc(n.path)}}</b>`+(n.role?` <span style='color:#8fa0b3'>[${{esc(n.role)}}]</span>`:'')+
      (n.purpose?`<br>${{esc(n.purpose)}}`:'')+(n.why?`<br><span style='color:#e0a030'>${{esc(n.why)}}</span>`:'')+
