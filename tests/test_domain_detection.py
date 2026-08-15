@@ -8,7 +8,9 @@ every prompt, shadowing later entries like FastAPI.
 Both copies of the detector are tested: session-start.py (SessionStart hook)
 and raven-skill-reminder.py (UserPromptSubmit hook).
 """
-import pathlib, tempfile, importlib.util
+import pathlib, sys, tempfile, importlib.util
+
+_FIXTURE_SQL = (pathlib.Path(__file__).parent / "fixtures" / "tiny-schema.sql").read_text()
 
 _ROOT = pathlib.Path(__file__).parent.parent
 
@@ -20,7 +22,7 @@ def _load(name: str, rel: str):
     return mod
 
 
-session_start = _load("session_start_mod", "scripts/session-start.py")
+session_start = _load("session_start_mod", "scripts/session/session-start.py")
 reminder = _load("reminder_mod", "raven-core/raven-skill-reminder.py")
 DETECTORS = [session_start.detect_domain, reminder.detect_domain]
 
@@ -40,7 +42,7 @@ def test_sql_file_is_not_oracle() -> None:
     """A migrations/*.sql file + Python code must NOT detect Oracle (Rex bug)."""
     def build(root):
         (root / "migrations").mkdir()
-        (root / "migrations" / "001_init.sql").write_text("CREATE TABLE t (id INT);")
+        (root / "migrations" / "001_init.sql").write_text(_FIXTURE_SQL)
         (root / "app.py").write_text("import asyncio\n")
     for skill, name, strength in _fixture(build):
         assert name != "Oracle", f"stray .sql branded Oracle ({skill}, {strength})"
@@ -49,7 +51,7 @@ def test_sql_file_is_not_oracle() -> None:
 def test_sql_does_not_shadow_fastapi() -> None:
     """fastapi in requirements + a stray .sql must detect FastAPI, not Oracle."""
     def build(root):
-        (root / "schema.sql").write_text("CREATE TABLE t (id INT);")
+        (root / "schema.sql").write_text(_FIXTURE_SQL)
         (root / "requirements.txt").write_text("fastapi==0.115.0\nuvicorn\n")
     for skill, name, strength in _fixture(build):
         assert name == "FastAPI" and strength == "strong", (skill, name, strength)
@@ -129,8 +131,8 @@ if __name__ == "__main__":
         if fn_name.startswith("test_") and callable(fn):
             try:
                 fn()
-                print(f"✅ {fn_name}")
+                sys.stderr.write(f"ok {fn_name}\n")
             except AssertionError as e:
                 failures += 1
-                print(f"❌ {fn_name}: {e}")
+                sys.stderr.write(f"FAIL {fn_name}: {e}\n")
     raise SystemExit(failures)

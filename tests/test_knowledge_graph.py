@@ -11,11 +11,12 @@ from unittest import mock
 
 ROOT = Path(__file__).resolve().parents[1]
 SCRIPTS = ROOT / "scripts"
-sys.path.insert(0, str(SCRIPTS))
+for _d in (SCRIPTS, SCRIPTS / "memory", SCRIPTS / "dashboard"):
+    sys.path.insert(0, str(_d))
 
 from vault_common import extract_wikilinks, parse_frontmatter  # noqa: E402
-import knowledge_graph  # noqa: E402
-import dashboard  # noqa: E402
+import graph as knowledge_graph  # noqa: E402
+import core as dashboard  # noqa: E402
 
 
 class TestWikilinks(unittest.TestCase):
