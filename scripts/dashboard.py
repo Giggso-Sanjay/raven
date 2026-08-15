@@ -1960,45 +1960,34 @@ def build_node_briefings(graph: dict, metrics: dict, metadata: dict) -> dict:
             "session": "Think of this session as a day's work log — what someone did, not the whole factory.",
         }.get(ntype, "Think of this node as a pin on a map of how your software knowledge connects.")
 
-        oq = "; ".join(sections.get("open_questions") or [])[:220]
-        st = "; ".join(sections.get("current_state") or [])[:220]
+        oq = "; ".join(sections.get("open_questions") or [])[:180]
+        st = "; ".join(sections.get("current_state") or [])[:180]
+        note_line = (plain[:200] + "…") if plain and len(plain) > 200 else (plain or "no note body yet")
         guru = (
-            f"{analogy} "
-            f"You are looking at '{label}', a {ntype} node in the Raven knowledge graph. "
-            f"It is vault memory — not a live production monitor. "
-            f"Business: shared hubs stop teams from rediscovering the same facts every sprint. "
-            f"Technical: open the repo and related notes without dumping full git history into chat. "
-            f"Functional: open questions and decisions live next to cost so standups share one map. "
-            f"Repo: {proj or 'unscoped'}. "
-            f"{('Open questions: ' + oq + '. ') if oq else ''}"
-            f"{('Current state: ' + st + '. ') if st else ''}"
-            f"From the note: {plain[:420] if plain else 'No note body yet — hubs fill as sessions run.'} "
-            f"One takeaway: use this panel for story + links, then jump to code via Open repo."
+            f"• What: '{label}' — {ntype} note in vault memory (not a live monitor)\n"
+            f"• Repo: {proj or 'unscoped'}\n"
+            f"{('• Open questions: ' + oq + chr(10)) if oq else ''}"
+            f"{('• Current state: ' + st + chr(10)) if st else ''}"
+            f"• Latest note: {note_line}\n"
+            f"• Use: story + links here → code via Open repo"
         )
-        guru = _word_cap(guru, 200)
 
-        # ── Last update ~100 words ──
+        # ── Last update — bullets ──
         last_up = (
-            f"Last vault touch: {updated or 'unknown'}"
-            f"{f' (~{age_days} day(s) ago)' if age_days is not None else ''}. "
-            f"Graph degree: {degree.get(nid, 0)}. "
-            f"Linked: {', '.join(neigh[:6]) if neigh else 'none yet'}. "
-            f"Local clone: {local_path or 'not listed on hub'}. "
-            f"Vault note: ~/RavenVault/{path}. "
-            f"Refresh: run a coding session (Stop hooks) or "
-            f"python3 scripts/obsidian-log.py then python3 scripts/dashboard.py --html --open."
+            f"• Last touch: {updated or 'unknown'}"
+            f"{f' (~{age_days}d ago)' if age_days is not None else ''}\n"
+            f"• Links: {degree.get(nid, 0)} → {', '.join(neigh[:4]) if neigh else 'none yet'}\n"
+            f"• Local: {local_path or 'not on hub'}\n"
+            f"• Note: ~/RavenVault/{path}\n"
+            f"• Refresh: next session (Stop hooks) or scripts/obsidian-log.py"
         )
-        last_up = _word_cap(last_up, 100)
 
-        # ── Cost / tokens / CVE ~100 words ──
+        # ── Cost / tokens / CVE — bullets ──
         cost_blk = (
-            f"Trusted per-repo window for '{proj or 'n/a'}': "
-            f"{sessions} session-units, {tokens:,} tokens, {format_usd(cost)}. "
-            f"{_cve_guard_blurb(metrics, proj or label)} "
-            f"Window {metrics.get('window_start')} → {metrics.get('window_end')}. "
-            f"Portfolio totals are separate — see Headline dual cards."
+            f"• Spend ({proj or 'n/a'}): {sessions} sessions · {tokens:,} tokens · {format_usd(cost)}\n"
+            f"• Guards: {_cve_guard_blurb(metrics, proj or label)}\n"
+            f"• Window: {metrics.get('window_start')} → {metrics.get('window_end')} · portfolio totals in header strip"
         )
-        cost_blk = _word_cap(cost_blk, 100)
 
         briefings[nid] = {
             "id": nid,
@@ -2800,49 +2789,64 @@ def render_html(
     Plugin v{metadata['plugin_version']} ·
     Window: {metrics['window_start']} → {metrics['window_end']} ({metrics['window_days']} days)
   </p>
-  <details open style="background:#1e3a5f;border-radius:8px;margin-bottom:8px;">
-    <summary style="color:#bfdbfe;padding:10px 14px;font-size:13px;cursor:pointer;">
-      🌳 <strong>Code Tree</strong> — deterministic code-structure map (roles · purposes · commit whys · session overlay).
+  <nav style="position:sticky;top:0;z-index:20;background:#0f172acc;backdrop-filter:blur(8px);
+    border-bottom:1px solid #1e293b;margin:0 -8px 16px;padding:10px 8px;display:flex;gap:14px;
+    flex-wrap:wrap;align-items:center;font-size:14px;">
+    <a href="#overview" style="color:#e2e8f0;text-decoration:none;font-weight:600;">🪶 Overview</a>
+    <a href="#code-tree" style="color:#7dd3fc;text-decoration:none;">🌳 Code Tree</a>
+    <a href="#costs" style="color:#7dd3fc;text-decoration:none;">💰 Costs</a>
+    <a href="#knowledge-graph" style="color:#7dd3fc;text-decoration:none;">🕸 Knowledge</a>
+    <a href="#guards" style="color:#7dd3fc;text-decoration:none;">🛡 Guards</a>
+    <a href="#recommendations" style="color:#7dd3fc;text-decoration:none;">💡 Recs</a>
+    <details style="margin-left:auto;position:relative;">
+      <summary style="cursor:pointer;color:#94a3b8;list-style:none;">Advanced ▾</summary>
+      <div style="position:absolute;right:0;top:24px;background:#1e293b;border:1px solid #334155;
+        border-radius:8px;padding:10px;display:flex;flex-direction:column;gap:6px;min-width:210px;">
+        <button class="download" onclick="downloadJSON()">⬇ Download JSON</button>
+        <button class="download" onclick="downloadCSV()">⬇ Download CSV</button>
+        <button class="download" onclick="window.print()">🖨 Print / Save PDF</button>
+        <button class="download" id="refreshBtn" onclick="refreshDashboard()" style="background:#10b981;">🔄 Refresh</button>
+        <a class="download" href="#cost-method" style="background:#0ea5e9;text-decoration:none;">📐 Cost method</a>
+        <a class="download" href="#cost-compare" style="background:#f59e0b;text-decoration:none;">⚖️ Compare</a>
+        <label style="color:#cbd5e1;cursor:pointer;font-size:13px;">
+          <input type="checkbox" id="autoRefresh" onchange="toggleAutoRefresh()" style="cursor:pointer;margin-right:6px;">
+          Auto-refresh 30s
+        </label>
+        <span id="refreshStatus" style="display:none;color:#94a3b8;font-size:12px;"></span>
+      </div>
+    </details>
+  </nav>
+
+%%STATUS_STRIP%%
+
+  <details open id="code-tree" style="background:#1e3a5f;border-radius:8px;margin-bottom:14px;">
+    <summary style="color:#bfdbfe;padding:10px 14px;font-size:14px;cursor:pointer;">
+      🌳 <strong>Code Tree</strong> — what the codebase looks like and why files changed
+      <span style="color:#93c5fd;">(zoom with scroll · drag to pan · click folders)</span> ·
       <a href="code-tree.html" style="color:#93c5fd;">Open full page ↗</a>
     </summary>
     <iframe src="code-tree.html" style="width:100%;height:640px;border:0;border-radius:0 0 8px 8px;background:#12161c;"
       title="Raven Code Tree"></iframe>
   </details>
-  <p style="background:#14532d;color:#bbf7d0;padding:10px 14px;border-radius:8px;font-size:13px;margin-bottom:20px;">
-    <strong>Dashboard build: kg-v2-grounded</strong> —
-    If you still see “Sessions 1 · Cost $0.00”, you are on a <em>cached or stale</em> file.
-    Hard-refresh (Cmd+Shift+R) or re-run
-    <code style="background:#052e16;padding:2px 6px;border-radius:4px;">python3 scripts/dashboard.py --html --open</code>
-    from the Raven repo (not an old plugin copy).
-  </p>
 
-  <button class="download" onclick="downloadJSON()">⬇ Download JSON</button>
-  <button class="download" onclick="downloadCSV()">⬇ Download CSV</button>
-  <button class="download" onclick="window.print()">🖨 Print / Save PDF</button>
-  <button class="download" id="refreshBtn" onclick="refreshDashboard()" style="background: #10b981;">🔄 Refresh</button>
-  <a class="download" href="#knowledge-graph" style="background:#8b5cf6;text-decoration:none;">🕸 Knowledge graph</a>
-  <a class="download" href="#cost-method" style="background:#0ea5e9;text-decoration:none;">📐 Cost method</a>
-  <a class="download" href="#cost-compare" style="background:#f59e0b;text-decoration:none;">⚖️ Compare</a>
-  <a class="download" href="#costs" style="background:#0284c7;text-decoration:none;">💰 Raven meters</a>
-  <label style="display: inline-block; margin-left: 16px; color: #cbd5e1; cursor: pointer; font-size: 14px;">
-    <input type="checkbox" id="autoRefresh" onchange="toggleAutoRefresh()" style="cursor: pointer; margin-right: 6px;">
-    Auto-refresh every 30s
-  </label>
-  <span id="refreshStatus" style="display: none; color: #94a3b8; margin-left: 8px; font-size: 12px;"></span>
-
-  <h2>📋 Project Metadata</h2>
-  <div class="meta">
-    <div class="meta-grid">
-      <div><strong>Project</strong> {metadata['project']}</div>
-      <div><strong>Company</strong> {metadata['company']}</div>
-      <div><strong>Owner</strong> {metadata['owner']}</div>
-      <div><strong>User</strong> {metadata['user'] or '—'}</div>
-      <div><strong>Branch</strong> {metadata['git_branch'] or '—'}</div>
-      <div><strong>Remote</strong> {metadata['git_remote'] or '—'}</div>
-      <div><strong>Manifest</strong> {'✓ present' if metadata['manifest_present'] else '✗ MISSING'}</div>
-      <div><strong>Vault</strong> {metadata['vault_path']}</div>
+  <details style="margin-bottom:14px;">
+    <summary style="cursor:pointer;color:#94a3b8;font-size:14px;padding:6px 0;">
+      📋 Project metadata — {metadata['project']} · branch {metadata['git_branch'] or '—'} ·
+      manifest {'✓' if metadata['manifest_present'] else '✗ MISSING'}
+    </summary>
+    <div class="meta">
+      <div class="meta-grid">
+        <div><strong>Project</strong> {metadata['project']}</div>
+        <div><strong>Company</strong> {metadata['company']}</div>
+        <div><strong>Owner</strong> {metadata['owner']}</div>
+        <div><strong>User</strong> {metadata['user'] or '—'}</div>
+        <div><strong>Branch</strong> {metadata['git_branch'] or '—'}</div>
+        <div><strong>Remote</strong> {metadata['git_remote'] or '—'}</div>
+        <div><strong>Manifest</strong> {'✓ present' if metadata['manifest_present'] else '✗ MISSING'}</div>
+        <div><strong>Vault</strong> {metadata['vault_path']}</div>
+      </div>
     </div>
-  </div>
+  </details>
 
   {kg_section}
 
@@ -2925,6 +2929,55 @@ def render_html(
     n_graph_nodes = len((graph or {}).get("nodes") or []) if graph else 0
     n_graph_edges = len((graph or {}).get("edges") or []) if graph else 0
     n_guards = sum((metrics.get("guard_events") or {}).values())
+
+    # ── Answer-first status strip (vibe-coder verdict + engineer numbers) ──
+    hot_file, hot_why = "—", ""
+    try:
+        ct = json.loads((Path(metadata.get("repo_root") or ".") / ".raven" / "code-tree.json").read_text())
+        flat_ct: list = []
+
+        def _walk_ct(n):
+            if n.get("type") == "program":
+                flat_ct.append(n)
+            for c in n.get("children", []):
+                _walk_ct(c)
+
+        _walk_ct(ct.get("root") or {})
+        flat_ct.sort(key=lambda n: -n.get("churn_30d", 0))
+        if flat_ct and flat_ct[0].get("churn_30d", 0):
+            hot_file = flat_ct[0]["id"].split("/")[-1]
+            hot_why = (flat_ct[0].get("history") or [{}])[0].get("why", "")[:70]
+    except Exception:
+        pass
+    ok = metadata.get("manifest_present", True)
+    verdict = "✅ All clear" if ok else "⚠️ Attention"
+    verdict_sub = (
+        f"Nothing blocked · {n_guards} guard event(s) logged, guards announce themselves when they fire"
+        if ok else "Manifest missing — run /raven-init"
+    )
+    status_strip = f"""
+  <div id="overview" style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:16px;">
+    <div class="stat" style="flex:1.4;min-width:220px;border-left:4px solid {'#10b981' if ok else '#f59e0b'};">
+      <div class="stat-value" style="font-size:22px;">{verdict}</div>
+      <div style="color:#94a3b8;font-size:12px;margin-top:6px;">{verdict_sub}</div>
+    </div>
+    <div class="stat" style="flex:1;min-width:150px;">
+      <div class="stat-label">Spend — 30d, all repos {c1}</div>
+      <div class="stat-value">{format_usd(all_cost)}</div>
+      <div style="color:#94a3b8;font-size:12px;margin-top:6px;">this repo: {format_usd(cur_cost)} {c2}</div>
+    </div>
+    <div class="stat" style="flex:1;min-width:150px;">
+      <div class="stat-label">Sessions — 30d {c1}</div>
+      <div class="stat-value">{all_sess:,}</div>
+      <div style="color:#94a3b8;font-size:12px;margin-top:6px;">{all_tok:,} tokens</div>
+    </div>
+    <div class="stat" style="flex:1.4;min-width:200px;">
+      <div class="stat-label">Hottest file this month</div>
+      <div class="stat-value" style="font-size:16px;">{hot_file}</div>
+      <div style="color:#94a3b8;font-size:12px;margin-top:6px;">{hot_why or 'no recent churn'}</div>
+    </div>
+  </div>"""
+    html = html.replace("%%STATUS_STRIP%%", status_strip)
 
     # Bibliography HTML
     bib_rows = ""
@@ -3103,46 +3156,53 @@ def render_html(
     # Provider attribution (Codex-tier matters)
     providers = ls.get("providers") or {}
     if providers:
-        html += '<h2>🔌 Provider Attribution</h2>\n'
+        html += '<details><summary style="cursor:pointer;color:#94a3b8;font-size:15px;padding:4px 0;"><b>🔌 Provider attribution</b> ▾</summary>'
+        html += ''
         html += '<table>\n<thead><tr><th>Provider</th><th class="num">Tokens</th><th class="num">Share</th><th class="num">Cost (USD)</th></tr></thead>\n<tbody>\n'
         for prov, info in providers.items():
             tok = info.get("tokens", 0)
             cost = info.get("cost_usd", 0.0)
             pct = (tok / total_tok * 100) if total_tok else 0
             html += f'<tr><td><code>{prov}</code></td><td class="num">{tok:,}</td><td class="num">{pct:.1f}%</td><td class="num">${cost:.4f}</td></tr>\n'
-        html += '</tbody></table>\n'
+        html += '</tbody></table></details>\n'
 
     if metrics["tier_counts"]:
-        html += '<h2>🎯 Tier Mix</h2>\n<table>\n<thead><tr><th>Tier</th><th class="num">Count</th><th class="num">Share</th><th class="num">Cost (USD)</th><th>Distribution</th></tr></thead>\n<tbody>\n'
+        html += '<details><summary style="cursor:pointer;color:#94a3b8;font-size:15px;padding:4px 0;"><b>🎯 Tier mix</b> ▾</summary><table>\n<thead><tr><th>Tier</th><th class="num">Count</th><th class="num">Share</th><th class="num">Cost (USD)</th><th>Distribution</th></tr></thead>\n<tbody>\n'
         for tier in ["SIMPLE", "MEDIUM", "COMPLEX", "LOCAL_ONLY"]:
             c = metrics["tier_counts"].get(tier, 0)
             p = metrics["tier_share_pct"].get(tier, 0)
             cost = metrics["tier_cost"].get(tier, 0)
             html += f'<tr><td>{tier}</td><td class="num">{c}</td><td class="num">{p:.1f}%</td><td class="num">${cost:.3f}</td><td><span class="bar" style="width:{p*2}px"></span></td></tr>\n'
-        html += '</tbody></table>\n'
+        html += '</tbody></table></details>\n'
 
     if metrics["cost_by_day"]:
-        html += '<h2>📅 Daily Series</h2>\n<table>\n<thead><tr><th>Date</th><th class="num">Sessions</th><th class="num">Tokens</th><th class="num">Cost</th></tr></thead>\n<tbody>\n'
+        html += f'<details><summary style="cursor:pointer;color:#94a3b8;font-size:15px;padding:4px 0;"><b>📅 Daily series</b> — {len(metrics["sessions_by_day"])} day(s) ▾</summary>'
+        html += '<table>\n<thead><tr><th>Date</th><th class="num">Sessions</th><th class="num">Tokens</th><th class="num">Cost</th></tr></thead>\n<tbody>\n'
         for day in sorted(metrics["sessions_by_day"].keys()):
             s = metrics["sessions_by_day"][day]
             t = metrics["tokens_by_day"].get(day, 0)
             c = metrics["cost_by_day"].get(day, 0)
             html += f'<tr><td>{day}</td><td class="num">{s}</td><td class="num">{t:,}</td><td class="num">{format_usd(c)}</td></tr>\n'
-        html += '</tbody></table>\n'
+        html += '</tbody></table></details>\n'
 
     if metrics["skills_used"]:
-        html += '<h2>🛠 Top Skills</h2>\n<table>\n<thead><tr><th>Skill</th><th class="num">Invocations</th></tr></thead>\n<tbody>\n'
+        html += f'<details><summary style="cursor:pointer;color:#94a3b8;font-size:15px;padding:4px 0;"><b>🛠 Top skills</b> — {len(metrics["skills_used"])} used ▾</summary>'
+        html += '<table>\n<thead><tr><th>Skill</th><th class="num">Invocations</th></tr></thead>\n<tbody>\n'
         for skill, count in list(metrics["skills_used"].items())[:15]:
             html += f'<tr><td>{skill}</td><td class="num">{count}</td></tr>\n'
-        html += '</tbody></table>\n'
+        html += '</tbody></table></details>\n'
 
+    html += f'<h2 id="guards">🛡 Guards — {n_guards} event(s) in window</h2>\n'
     if metrics["guard_events"]:
-        html += '<h2>🛡 Guard Events</h2>\n<table>\n<thead><tr><th>Event</th><th class="num">Count</th></tr></thead>\n<tbody>\n'
+        html += '<details><summary style="cursor:pointer;color:#94a3b8;font-size:14px;padding:4px 0;">Event breakdown ▾</summary>\n'
+        html += '<table>\n<thead><tr><th>Event</th><th class="num">Count</th></tr></thead>\n<tbody>\n'
         for event, count in sorted(metrics["guard_events"].items(), key=lambda x: -x[1])[:15]:
             html += f'<tr><td>{event}</td><td class="num">{count}</td></tr>\n'
-        html += '</tbody></table>\n'
+        html += '</tbody></table></details>\n'
+    else:
+        html += '<p style="color:#94a3b8;font-size:13px;">No guard events in window — no fire, not no coverage.</p>\n'
 
-    html += '<h2>💡 Recommendations — Grouped by Owner</h2>\n'
+    html += '<h2 id="recommendations">💡 Recommendations — Grouped by Owner</h2>\n'
     html += '<p style="color:#94a3b8;font-size:13px;margin-bottom:16px;">Different cost owners need different fixes. Issues are tagged by who controls the lever.</p>\n'
     if not recs:
         html += '<p style="color:#10b981;background:#1e293b;padding:16px;border-radius:8px;">✓ All metrics within healthy bands. No actions needed.</p>\n'

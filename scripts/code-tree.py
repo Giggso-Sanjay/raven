@@ -367,6 +367,15 @@ h1{{font-size:1.3rem}}summary{{cursor:pointer;padding:.2rem 0}}
 <div class='toolbar'>Session overlay: <select id='sess' onchange='hl(this.value)'>
 <option value=''>— none —</option>{opts}</select></div>
 <h2 style='font-size:1.05rem'>Graph view <span class='dim' style='font-weight:400'>(scroll = zoom at cursor · drag = pan · click folder = expand/collapse · hover = purpose + why)</span></h2>
+<p style='font-size:.8rem;margin:.2rem 0 .5rem'>
+<span style='color:#38b2ac'>●</span> folder&nbsp;
+<span style='color:#e05252'>●</span> guard&nbsp;
+<span style='color:#e0a030'>●</span> router&nbsp;
+<span style='color:#4a90d9'>●</span> hook&nbsp;
+<span style='color:#9b6dd6'>●</span> skill&nbsp;
+<span style='color:#8a949e'>●</span> script&nbsp;
+<span style='color:#5aa87a'>●</span> doc&nbsp;
+<span style='color:#e0a030'>◯</span> = changed in last 30d (bigger dot = more changes)</p>
 <div id='gwrap' style='overflow:hidden;background:#0e1218;border:1px solid #2a3340;border-radius:8px;margin-bottom:1.5rem;position:relative;height:72vh'>
 <div style='position:absolute;top:8px;right:8px;z-index:2;display:flex;gap:4px'>
 <button class='zb' onclick='zoomBy(1.4)'>＋</button><button class='zb' onclick='zoomBy(1/1.4)'>－</button><button class='zb' onclick='zoomFit()'>⤢ fit</button></div>
