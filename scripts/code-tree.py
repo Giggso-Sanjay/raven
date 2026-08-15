@@ -330,6 +330,17 @@ def render_html(open_after: bool = False) -> pathlib.Path:
             f"<p><b>Imports:</b> {imps}</p><p><b>Sessions:</b> {sess}</p>"
             f"<b>History:</b><ul>{hist or '<li>—</li>'}</ul></div></details>")
 
+    def slim(n: dict) -> dict:
+        out = {"id": n["id"].split("/")[-1] or n["id"], "path": n["id"],
+               "role": (n.get("role") or "").split(":")[0], "churn": n.get("churn_30d", 0),
+               "purpose": n.get("purpose", ""),
+               "why": (n["history"][0]["kind"] + ": " + n["history"][0]["why"]) if n.get("history") else ""}
+        kids = n.get("children")
+        if kids:
+            out["children"] = [slim(c) for c in sorted(kids, key=lambda c: (c.get("type") == "program", c["id"]))]
+        return out
+
+    graph_json = json.dumps(slim(tree["root"]))
     all_sessions = sorted({s for _, n in _flat_items(tree) for s in n.get("sessions", [])}, reverse=True)
     opts = "".join(f"<option value='{html.escape(s)}'>{html.escape(s)}</option>" for s in all_sessions)
     body = node_html(tree["root"])
@@ -353,7 +364,62 @@ h1{{font-size:1.3rem}}summary{{cursor:pointer;padding:.2rem 0}}
 · <a style='color:#4a90d9' href='dashboard.html'>← dashboard</a></p>
 <div class='toolbar'>Session overlay: <select id='sess' onchange='hl(this.value)'>
 <option value=''>— none —</option>{opts}</select></div>
+<h2 style='font-size:1.05rem'>Graph view <span class='dim' style='font-weight:400'>(click a folder node to expand/collapse · hover for purpose + last why)</span></h2>
+<div id='gwrap' style='overflow:auto;background:#0e1218;border:1px solid #2a3340;border-radius:8px;margin-bottom:1.5rem'>
+<svg id='g' xmlns='http://www.w3.org/2000/svg'></svg></div>
+<div id='tip' style='display:none;position:fixed;background:#1a212b;border:1px solid #3a4656;border-radius:6px;padding:.5rem .7rem;font-size:.8rem;max-width:380px;pointer-events:none;z-index:9'></div>
+<h2 style='font-size:1.05rem'>Explorer view</h2>
 {body}
+<script>
+const DATA={graph_json};
+const COLORS={{guard:'#e05252',router:'#e0a030',hook:'#4a90d9',skill:'#9b6dd6',script:'#8a949e',doc:'#5aa87a','':'#5f6b78'}};
+(function(){{
+ DATA.open=true; if(DATA.children) DATA.children.forEach(c=>c.open=true);
+ const svg=document.getElementById('g'), tip=document.getElementById('tip');
+ const ROW=20, COL=190, PAD=30;
+ function layout(){{
+  let y=0; const nodes=[], links=[];
+  (function walk(n,depth,parent){{
+   const me={{n:n,x:PAD+depth*COL,y:0,depth:depth}};
+   nodes.push(me);
+   if(n.children&&n.open){{
+    const kids=n.children.map(c=>walk(c,depth+1,me));
+    me.y=(kids[0].y+kids[kids.length-1].y)/2;
+   }} else {{ me.y=PAD+y*ROW; y++; }}
+   if(parent) links.push([parent,me]);
+   return me;
+  }})(DATA,0,null);
+  return {{nodes:nodes,links:links,h:PAD*2+y*ROW,w:PAD*2+(Math.max(...nodes.map(m=>m.depth))+1)*COL}};
+ }}
+ function esc(s){{return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;');}}
+ function render(){{
+  const L=layout();
+  svg.setAttribute('width',Math.max(L.w,900)); svg.setAttribute('height',Math.max(L.h,120));
+  let out='';
+  for(const [a,b] of L.links)
+   out+=`<path d='M${{a.x+6}} ${{a.y}} C ${{(a.x+b.x)/2}} ${{a.y}}, ${{(a.x+b.x)/2}} ${{b.y}}, ${{b.x-6}} ${{b.y}}' fill='none' stroke='#2e3a49' stroke-width='1.2'/>`;
+  L.nodes.forEach((m,i)=>{{
+   const n=m.n, isDir=!!n.children, r=isDir?6:Math.min(4+n.churn,9);
+   const fill=isDir?'#38b2ac':(COLORS[n.role]||COLORS['']);
+   out+=`<g class='nd' data-i='${{i}}' transform='translate(${{m.x}},${{m.y}})' style='cursor:${{isDir?'pointer':'default'}}'>`+
+    `<circle r='${{r}}' fill='${{fill}}' stroke='#0e1218' stroke-width='1.5' opacity='${{isDir&&!n.open?0.55:1}}'/>`+
+    (n.churn?`<circle r='${{r+3}}' fill='none' stroke='#e0a030' stroke-width='1'/>`:'')+
+    `<text x='${{r+5}}' y='4' fill='${{isDir?'#a8e0dc':'#c4cfdb'}}' font-size='11'>${{esc(n.id)}}${{isDir?(n.open?'':' ▸ ('+n.children.length+')'):''}}</text></g>`;
+  }});
+  svg.innerHTML=out;
+  svg.querySelectorAll('.nd').forEach(g=>{{
+   const m=L.nodes[+g.dataset.i], n=m.n;
+   g.onclick=()=>{{ if(n.children){{n.open=!n.open; render();}} }};
+   g.onmousemove=e=>{{ tip.style.display='block'; tip.style.left=(e.clientX+14)+'px'; tip.style.top=(e.clientY+10)+'px';
+    tip.innerHTML=`<b>${{esc(n.path)}}</b>`+(n.role?` <span style='color:#8fa0b3'>[${{esc(n.role)}}]</span>`:'')+
+     (n.purpose?`<br>${{esc(n.purpose)}}`:'')+(n.why?`<br><span style='color:#e0a030'>${{esc(n.why)}}</span>`:'')+
+     (n.churn?`<br><span style='color:#8fa0b3'>churn 30d: ×${{n.churn}}</span>`:''); }};
+   g.onmouseleave=()=>tip.style.display='none';
+  }});
+ }}
+ render();
+}})();
+</script>
 <script>
 function hl(s){{document.querySelectorAll('.prog').forEach(d=>{{
  const on=s&&(d.dataset.sessions||'').split(' ').includes(s);
