@@ -49,3 +49,4 @@ raven-dash-kg.md
 .raven/.cost-verify.json
 **/.raven/state/
 **/.raven/.model-session.json
+.raven/code-tree.json
