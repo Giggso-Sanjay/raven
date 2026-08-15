@@ -2800,6 +2800,12 @@ def render_html(
     Plugin v{metadata['plugin_version']} ·
     Window: {metrics['window_start']} → {metrics['window_end']} ({metrics['window_days']} days)
   </p>
+  <p style="background:#1e3a5f;color:#bfdbfe;padding:10px 14px;border-radius:8px;font-size:13px;margin-bottom:8px;">
+    🌳 <strong><a href="code-tree.html" style="color:#93c5fd;">Code Tree view</a></strong> —
+    deterministic code-structure map (roles · purposes · commit whys · session overlay).
+    Rebuild: <code style="background:#0f2440;padding:2px 6px;border-radius:4px;">python3 scripts/code-tree.py --build --html</code>.
+    The force-directed knowledge graph below remains for vault notes.
+  </p>
   <p style="background:#14532d;color:#bbf7d0;padding:10px 14px;border-radius:8px;font-size:13px;margin-bottom:20px;">
     <strong>Dashboard build: kg-v2-grounded</strong> —
     If you still see “Sessions 1 · Cost $0.00”, you are on a <em>cached or stale</em> file.
