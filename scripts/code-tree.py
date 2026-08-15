@@ -319,14 +319,16 @@ def render_html(open_after: bool = False) -> pathlib.Path:
         sess = ", ".join(html.escape(s) for s in n.get("sessions", [])) or "—"
         imps = ", ".join(html.escape(i) for i in n.get("imports", [])) or "—"
         ses_attr = " ".join(html.escape(s) for s in n.get("sessions", []))
+        vs = f"vscode://file{html.escape(str(REPO / n['id']))}"
         return (
-            f"<details class='prog' data-sessions='{ses_attr}'>"
+            f"<details class='prog' id='f-{html.escape(n['id']).replace('/', '--').replace('.', '_')}' data-sessions='{ses_attr}'>"
             f"<summary><span class='chip' style='background:{color}'>{html.escape(role or 'file')}</span> "
             f"<b>{html.escape(pathlib.Path(n['id']).name)}</b> {badge}{warn}"
             f"<span class='purpose'>{html.escape(n.get('purpose') or '')}</span>"
             f"{('<span class=why>' + html.escape(kind) + ': ' + why + '</span>') if why else ''}"
             f"</summary><div class='panel'>"
-            f"<p><b>Path:</b> <code>{html.escape(n['id'])}</code></p>"
+            f"<p><b>Path:</b> <code>{html.escape(n['id'])}</code> · "
+            f"<a href='{vs}' style='color:#4a90d9'>Open in VS Code ↗</a></p>"
             f"<p><b>Imports:</b> {imps}</p><p><b>Sessions:</b> {sess}</p>"
             f"<b>History:</b><ul>{hist or '<li>—</li>'}</ul></div></details>")
 
@@ -357,6 +359,7 @@ h1{{font-size:1.3rem}}summary{{cursor:pointer;padding:.2rem 0}}
 .panel{{background:#1a212b;border-radius:6px;margin:.4rem 0 .6rem 1.6rem;padding:.6rem .9rem}}
 .dim{{color:#5a6878}}code{{background:#232c38;padding:0 .3em;border-radius:3px}}
 .hl>summary{{background:#243447;border-radius:4px}}
+.flash>summary{{background:#2c4a6e;border-radius:4px;transition:background 1.5s}}
 .toolbar{{margin:1rem 0}}select{{background:#1a212b;color:#e2e8f0;border:1px solid #2a3340;padding:.3em;border-radius:4px}}
 .zb{{background:#1a212b;color:#e2e8f0;border:1px solid #3a4656;border-radius:4px;width:34px;height:28px;cursor:pointer;font-size:14px}}
 .zb:hover{{background:#243447}}.zb:last-child{{width:auto;padding:0 .5em}}
@@ -435,7 +438,7 @@ const COLORS={{guard:'#e05252',router:'#e0a030',hook:'#4a90d9',skill:'#9b6dd6',s
   L.nodes.forEach((m,i)=>{{
    const n=m.n, isDir=!!n.children, r=isDir?6:Math.min(4+n.churn,9);
    const fill=isDir?'#38b2ac':(COLORS[n.role]||COLORS['']);
-   out+=`<g class='nd' data-i='${{i}}' transform='translate(${{m.x}},${{m.y}})' style='cursor:${{isDir?'pointer':'default'}}'>`+
+   out+=`<g class='nd' data-i='${{i}}' transform='translate(${{m.x}},${{m.y}})' style='cursor:pointer'>`+
     `<circle r='${{r}}' fill='${{fill}}' stroke='#0e1218' stroke-width='1.5' opacity='${{isDir&&!n.open?0.55:1}}'/>`+
     (n.churn?`<circle r='${{r+3}}' fill='none' stroke='#e0a030' stroke-width='1'/>`:'')+
     `<text x='${{r+5}}' y='4' fill='${{isDir?'#a8e0dc':'#c4cfdb'}}' font-size='11'>${{esc(n.id)}}${{isDir?(n.open?'':' ▸ ('+n.children.length+')'):''}}</text></g>`;
@@ -444,7 +447,14 @@ const COLORS={{guard:'#e05252',router:'#e0a030',hook:'#4a90d9',skill:'#9b6dd6',s
   if(!keepView) zoomFit();
   vp.querySelectorAll('.nd').forEach(g=>{{
    const m=L.nodes[+g.dataset.i], n=m.n;
-   g.onclick=()=>{{ if(n.children){{n.open=!n.open; render(true);}} }};
+   g.onclick=()=>{{
+    if(n.children){{ n.open=!n.open; render(true); return; }}
+    const el=document.getElementById('f-'+n.path.replace(/\\//g,'--').replace(/\\./g,'_'));
+    if(el){{ el.open=true; let p=el.parentElement;
+     while(p){{ if(p.tagName==='DETAILS')p.open=true; p=p.parentElement; }}
+     el.scrollIntoView({{behavior:'smooth',block:'center'}});
+     el.classList.add('flash'); setTimeout(()=>el.classList.remove('flash'),1600); }}
+   }};
    g.onmousemove=e=>{{ tip.style.display='block'; tip.style.left=(e.clientX+14)+'px'; tip.style.top=(e.clientY+10)+'px';
     tip.innerHTML=`<b>${{esc(n.path)}}</b>`+(n.role?` <span style='color:#8fa0b3'>[${{esc(n.role)}}]</span>`:'')+
      (n.purpose?`<br>${{esc(n.purpose)}}`:'')+(n.why?`<br><span style='color:#e0a030'>${{esc(n.why)}}</span>`:'')+
