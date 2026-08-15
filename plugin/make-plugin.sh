@@ -71,8 +71,8 @@ for script in \
     vault-load.py \
     knowledge-extract.py \
     knowledge_graph.py \
-    kg_icons.py \
     dashboard.py \
+    code-tree.py \
     cve-prompt-guard.py \
     cve-check.py \
     secret-scan.py \
@@ -110,11 +110,10 @@ if [[ -d "$REPO_DIR/assets/kg-icons" ]]; then
     cp "$REPO_DIR/assets/kg-icons/"*.svg "$TMP_DIR/assets/kg-icons/" 2>/dev/null || true
     echo "  ✅ assets/kg-icons (knowledge graph icons)"
 fi
-# kg_icons.py lives with scripts (copied in loop if listed)
-if [[ -f "$REPO_DIR/scripts/kg_icons.py" ]]; then
-    cp "$REPO_DIR/scripts/kg_icons.py" "$TMP_DIR/scripts/kg_icons.py"
-    chmod +x "$TMP_DIR/scripts/kg_icons.py"
-    echo "  ✅ scripts/kg_icons.py"
+# dashboard package (core/render/graph/icons/tree)
+if [[ -d "$REPO_DIR/scripts/dashboard" ]]; then
+    cp -R "$REPO_DIR/scripts/dashboard" "$TMP_DIR/scripts/dashboard"
+    echo "  ✅ scripts/dashboard/ package"
 fi
 
 # ── Pre-flight validation ──
