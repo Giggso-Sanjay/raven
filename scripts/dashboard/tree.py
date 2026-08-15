@@ -31,7 +31,8 @@ REPO = pathlib.Path(
 )
 TREE_PATH = REPO / ".raven" / "code-tree.json"
 VAULT = pathlib.Path(os.environ.get("RAVEN_VAULT", str(pathlib.Path.home() / "RavenVault")))
-HTML_PATH = VAULT / "code-tree.html"
+TREES_DIR = VAULT / "dashboard" / "trees"
+HTML_PATH = TREES_DIR / (REPO.name + ".html")
 
 HISTORY_CAP = 5
 SESSIONS_CAP = 10
@@ -366,7 +367,7 @@ h1{{font-size:1.3rem}}summary{{cursor:pointer;padding:.2rem 0}}
 </style></head><body>
 <h1>🌳 Raven Code Tree — {html.escape(tree['repo'])}</h1>
 <p class='dim'>Generated {html.escape(tree['generated_at'])} · source: .raven/code-tree.json · deterministic (AST + git, no LLM)
-· <a style='color:#4a90d9' href='dashboard.html'>← dashboard</a></p>
+· <a style='color:#4a90d9' href='../index.html'>← dashboard</a></p>
 <div class='toolbar'>Session overlay: <select id='sess' onchange='hl(this.value)'>
 <option value=''>— none —</option>{opts}</select></div>
 <h2 style='font-size:1.05rem'>Graph view <span class='dim' style='font-weight:400'>(scroll = zoom at cursor · drag = pan · click folder = expand/collapse · hover = purpose + why)</span></h2>
@@ -474,7 +475,7 @@ function hl(s){{document.querySelectorAll('.prog').forEach(d=>{{
     HTML_PATH.parent.mkdir(parents=True, exist_ok=True)
     HTML_PATH.write_text(page)
     # Uniform per-repo name so the dashboard switcher can address every tree
-    named = VAULT / f"code-tree-{tree['repo']}.html"
+    named = TREES_DIR / f"{tree['repo']}.html"
     if named != HTML_PATH:
         named.write_text(page)
     if open_after:
@@ -509,7 +510,7 @@ def main() -> None:
             print(f"code-tree: {REPO} is not a git repo", file=sys.stderr)
             return
         TREE_PATH = REPO / ".raven" / "code-tree.json"
-        HTML_PATH = VAULT / f"code-tree-{REPO.name}.html"
+        HTML_PATH = TREES_DIR / f"{REPO.name}.html"
 
     if args.build:
         t = build()

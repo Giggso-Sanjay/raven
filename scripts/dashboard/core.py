@@ -3010,7 +3010,7 @@ def render_html(
         if not active_30d or not ct_script.exists():
             continue
         lp = resolve_local_path(pname, "")
-        if lp and Path(lp, ".git").exists() and not (VAULT / f"code-tree-{Path(lp).name}.html").exists():
+        if lp and Path(lp, ".git").exists() and not (VAULT / "dashboard" / "trees" / f"{Path(lp).name}.html").exists():
             try:
                 subprocess.Popen(
                     [sys.executable, str(ct_script), "--repo", lp, "--build", "--html"],
@@ -3018,17 +3018,17 @@ def render_html(
                 )
             except Exception:
                 pass
-    tree_pages = sorted(p.name for p in VAULT.glob("code-tree*.html"))
+    tree_pages = sorted(p.name for p in (VAULT / "dashboard" / "trees").glob("*.html"))
     cur_repo_name = metadata.get("project") or "raven"
-    default_tree = f"code-tree-{cur_repo_name}.html"
+    default_tree = f"{cur_repo_name}.html"
     if default_tree not in tree_pages:
         matches = [p for p in tree_pages if p.lower() == default_tree.lower()]
         default_tree = matches[0] if matches else default_tree
-        if default_tree not in tree_pages: default_tree = "code-tree.html"
+        pass
     tree_opts = "".join(
-        f"<option value='{p}' {'selected' if p == default_tree else ''}>{p.replace('code-tree-','').replace('.html','')}</option>"
+        f"<option value='trees/{p}' {'selected' if p == default_tree else ''}>{p.replace('.html','')}</option>"
         for p in tree_pages
-    ) or f"<option value='code-tree.html' selected>{cur_repo_name}</option>"
+    ) or f"<option value='' selected>no trees built</option>"
     code_tree_section = f"""
   <details open id="code-tree" style="background:#1e3a5f;border-radius:8px;margin:14px 0;">
     <summary style="color:#bfdbfe;padding:10px 14px;font-size:14px;cursor:pointer;">
@@ -3036,25 +3036,25 @@ def render_html(
       <select id="treeRepo" onclick="event.stopPropagation()" onchange="openCodeTree(this.value)"
         style="background:#0f2440;color:#bfdbfe;border:1px solid #334155;border-radius:4px;padding:2px 6px;">{tree_opts}</select>
       <span style="color:#93c5fd;">(zoom with scroll · drag to pan · click folders)</span> ·
-      <a id="treeFull" href="{default_tree}" style="color:#93c5fd;" onclick="event.stopPropagation()">Open full page ↗</a>
+      <a id="treeFull" href="trees/{default_tree}" style="color:#93c5fd;" onclick="event.stopPropagation()">Open full page ↗</a>
       <span id="treeMissing" style="color:#fbbf24;display:none;">— no tree built for this repo yet</span>
     </summary>
-    <iframe id="treeFrame" src="{default_tree}" style="width:100%;height:640px;border:0;border-radius:0 0 8px 8px;background:#12161c;"
+    <iframe id="treeFrame" src="trees/{default_tree}" style="width:100%;height:640px;border:0;border-radius:0 0 8px 8px;background:#12161c;"
       title="Raven Code Tree"></iframe>
   </details>
   <script>
     var TREE_PAGES = {json.dumps(tree_pages)};
     function openCodeTree(sel, noScroll) {{
-      var page = sel.endsWith('.html') ? sel : ('code-tree-' + sel + '.html');
+      var page = sel.endsWith('.html') ? sel.replace(/^trees\//,'') : (sel + '.html');
       var hit = TREE_PAGES.find(function(x){{ return x.toLowerCase() === page.toLowerCase(); }});
       if (hit) page = hit;
-      var missing = !hit && page !== 'code-tree.html';
+      var missing = !hit;
       document.getElementById('treeMissing').style.display = missing ? '' : 'none';
       if (missing) return;
-      document.getElementById('treeFrame').src = page;
-      document.getElementById('treeFull').href = page;
+      document.getElementById('treeFrame').src = 'trees/'+page;
+      document.getElementById('treeFull').href = 'trees/'+page;
       var dd = document.getElementById('treeRepo');
-      if (dd && dd.value !== page) dd.value = page;
+      if (dd && dd.value !== 'trees/'+page) dd.value = 'trees/'+page;
       document.getElementById('code-tree').open = true;
       if (!noScroll) document.getElementById('code-tree').scrollIntoView({{behavior:'smooth', block:'start'}});
     }}
@@ -3700,10 +3700,13 @@ def main():
     if args.html or args.all:
         VAULT.mkdir(parents=True, exist_ok=True)
         html_out = render_html(metrics, metadata, recs, graph=graph)
-        # Atomic write — single dashboard.html (tokenomics + knowledge graph)
-        tmp = VAULT_DASHBOARD_HTML.with_suffix(".html.tmp")
+        # New shell (dashboard/index.html) + legacy detail page + redirect stub
+        import render as shell_render
+        index_path = shell_render.write_index(metrics, metadata)
+        legacy_path = shell_render.OUT_DIR / "legacy.html"
+        tmp = legacy_path.with_suffix(".html.tmp")
         tmp.write_text(html_out)
-        tmp.replace(VAULT_DASHBOARD_HTML)
+        tmp.replace(legacy_path)
         # Remove legacy dual-file names (never delete dashboard.html itself).
         # dashboard-kg.html used to be in this cleanup list, but it's now the
         # deliberate fixed-name snapshot written below — no longer legacy.
@@ -3725,7 +3728,7 @@ def main():
         stamp = {
             "build": "kg-v2-grounded+cite",
             "generated_at": metadata.get("report_generated_at_local"),
-            "path": str(VAULT_DASHBOARD_HTML),
+            "path": str(index_path),
             "versioned_path": str(versioned_path),
             "plugin_version": PLUGIN_VERSION,
             "bytes": len(html_out),
@@ -3734,13 +3737,13 @@ def main():
         }
         (VAULT / "dashboard-stamp.json").write_text(json.dumps(stamp, indent=2) + "\n")
         print(
-            f"🌐 HTML dashboard: {VAULT_DASHBOARD_HTML} ({len(html_out)} bytes, "
+            f"🌐 HTML dashboard: {index_path} (legacy detail: dashboard/legacy.html, "
             f"nodes={stamp['graph_nodes']})",
             file=sys.stderr,
         )
         if args.open:
             try:
-                subprocess.run(["open", str(VAULT_DASHBOARD_HTML)], check=False)
+                subprocess.run(["open", str(index_path)], check=False)
             except Exception:
                 pass
 
