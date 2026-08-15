@@ -18,7 +18,7 @@ MISS_LOG_PATH = REPO_ROOT / ".raven" / "audit" / "skill-misses.jsonl"
 
 def load_manifest():
     if not MANIFEST_PATH.exists():
-        return {}
+        return None
     with open(MANIFEST_PATH) as f:
         return json.load(f).get("skills", {})
 
@@ -28,9 +28,14 @@ def resolve(keyword, caller="unknown"):
 
     Match order: exact name -> substring match against name or purpose.
     A miss is logged; a hit is not (hits are the expected path, only
-    misses need a trail per the audit).
+    misses need a trail per the audit). A missing manifest is logged as
+    its own event, distinct from a genuine unknown-keyword miss.
     """
     skills = load_manifest()
+    if skills is None:
+        _log_event("manifest_missing", keyword, caller)
+        return None, None
+
     kw = keyword.strip().lower()
 
     if kw in skills:
@@ -42,15 +47,15 @@ def resolve(keyword, caller="unknown"):
         if kw in name.lower() or kw in purpose:
             return entry["name"], entry["paths"][0]
 
-    _log_miss(keyword, caller)
+    _log_event("skill_miss", keyword, caller)
     return None, None
 
 
-def _log_miss(keyword, caller):
+def _log_event(event, keyword, caller):
     MISS_LOG_PATH.parent.mkdir(parents=True, exist_ok=True)
     record = {
-        "timestamp": datetime.now(timezone.utc).isoformat(),
-        "event": "skill_miss",
+        "ts": datetime.now(timezone.utc).isoformat(),
+        "event": event,
         "keyword": keyword,
         "caller": caller,
     }
@@ -69,7 +74,8 @@ def main():
         print(json.dumps({"status": "hit", "name": name, "path": path}))
         sys.exit(0)
     else:
-        print(json.dumps({"status": "miss", "keyword": args.keyword, "logged_to": str(MISS_LOG_PATH)}))
+        status = "manifest_missing" if not MANIFEST_PATH.exists() else "miss"
+        print(json.dumps({"status": status, "keyword": args.keyword, "logged_to": str(MISS_LOG_PATH)}))
         sys.exit(1)
 
 
