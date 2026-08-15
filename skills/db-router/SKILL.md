@@ -19,9 +19,18 @@ description: Pure routing table. Detects DB from context, hands off to the right
 | `dynamodb` `dynamo` | `dynamic-specialist` — platform: DynamoDB |
 | `cassandra` `scylladb` `astra db` | `dynamic-specialist` — platform: Cassandra |
 | `sqlite` `libsql` `turso` | `dynamic-specialist` — platform: SQLite |
-| anything else | `dynamic-specialist` — platform: [detected DB name] |
+| anything else | resolve first (see below), then `dynamic-specialist` if unresolved |
 
 Multiple DBs in one message → ask which is primary before routing.
+
+## RESOLVE BEFORE FALLBACK
+
+For any DB keyword not in the table above, run the resolver before assuming no curated skill exists:
+```bash
+python3 scripts/skill-resolve.py "[detected DB name]" --caller db-router
+```
+- `status: hit` → hand off to the returned skill, not `dynamic-specialist`.
+- `status: miss` → the miss is logged to `.raven/audit/skill-misses.jsonl` automatically. Proceed to `dynamic-specialist` — platform: [detected DB name].
 
 ## RULES
 
