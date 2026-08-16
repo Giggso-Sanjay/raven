@@ -279,8 +279,8 @@ if [ -n "$RAVEN_CORE_DELETED" ]; then
     echo -e "  ${RED}║  ⛔ HARD BLOCK — raven-core DELETION FORBIDDEN               ║${NC}"
     echo -e "  ${RED}╠══════════════════════════════════════════════════════════════╣${NC}"
     echo -e "  ${RED}║                                                               ║${NC}"
-    echo -e "  ${RED}║  raven-core/ is the ONLY real copy of these engine scripts.  ║${NC}"
-    echo -e "  ${RED}║  All other locations are symlinks pointing here.              ║${NC}"
+    echo -e "  ${RED}║  raven-core/ mirrors scripts/ (canonical) via symlinks.      ║${NC}"
+    echo -e "  ${RED}║  Deleting a mirror entry breaks installed repos that call it. ║${NC}"
     echo -e "  ${RED}║  Deleting from raven-core/ silently breaks ALL of them.      ║${NC}"
     echo -e "  ${RED}║                                                               ║${NC}"
     echo -e "  ${RED}║  Staged for deletion:                                         ║${NC}"
@@ -289,7 +289,7 @@ if [ -n "$RAVEN_CORE_DELETED" ]; then
     done
     echo -e "  ${RED}║                                                               ║${NC}"
     echo -e "  ${RED}║  This block CANNOT be overridden with [GUARD:ALLOW-DELETE].  ║${NC}"
-    echo -e "  ${RED}║  To replace a script: update it in raven-core/, never delete.║${NC}"
+    echo -e "  ${RED}║  To retire a script: replace it with a deprecation shim.     ║${NC}"
     echo -e "  ${RED}╚══════════════════════════════════════════════════════════════╝${NC}"
     echo ""
     exit 1
