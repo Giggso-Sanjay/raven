@@ -14,7 +14,7 @@ import re
 import sys
 from pathlib import Path
 
-REPO = Path(__file__).resolve().parent.parent
+REPO = Path(__file__).resolve().parent.parent.parent
 CANON = (REPO / "raven-core" / "VERSION").read_text().strip()
 
 # (path, how to extract the claimed current version)
@@ -25,7 +25,7 @@ CHECKS = [
     ("plugin/README.md", r"^# Raven Plugin — v([\d.]+)"),
     ("VERSIONLOG.md", r"^## v([\d.]+) — "),  # newest entry on top
     ("plugin/make-plugin.sh", r'^VERSION="([\d.]+)"'),
-    ("scripts/dashboard.py", r'^PLUGIN_VERSION = "([\d.]+)"'),
+    ("scripts/dashboard/core.py", r'^PLUGIN_VERSION = "([\d.]+)"'),
 ]
 
 JSON_CHECKS = [

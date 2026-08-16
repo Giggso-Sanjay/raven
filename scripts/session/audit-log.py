@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# Raven — Audit Logger v4.0
+# Raven — Audit Logger v5.0
 # Cloud-aware: routes to S3, GCS, Azure Blob, OCI, or local
 # based on manifest stack.cloud and manifest.secrets.json audit config
 # NEVER errors. NEVER blocks. Silent if not configured.

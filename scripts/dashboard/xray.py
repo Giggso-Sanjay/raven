@@ -320,7 +320,7 @@ def render_html(open_after: bool = False) -> pathlib.Path:
         sess = ", ".join(html.escape(s) for s in n.get("sessions", [])) or "—"
         imps = ", ".join(html.escape(i) for i in n.get("imports", [])) or "—"
         ses_attr = " ".join(html.escape(s) for s in n.get("sessions", []))
-        vs = f"vscode://file{html.escape(str(REPO / n['id']))}"
+        abs_path = html.escape(str(REPO / n['id']))
         return (
             f"<details class='prog' id='f-{html.escape(n['id']).replace('/', '--').replace('.', '_')}' data-sessions='{ses_attr}'>"
             f"<summary><span class='chip' style='background:{color}'>{html.escape(role or 'file')}</span> "
@@ -329,7 +329,7 @@ def render_html(open_after: bool = False) -> pathlib.Path:
             f"{('<span class=why>' + html.escape(kind) + ': ' + why + '</span>') if why else ''}"
             f"</summary><div class='panel'>"
             f"<p><b>Path:</b> <code>{html.escape(n['id'])}</code> · "
-            f"<a href='{vs}' style='color:#4a90d9'>Open in VS Code ↗</a></p>"
+            f"<a class='openIDE' data-path='{abs_path}' style='color:#4a90d9' href='#'>Open in editor ↗</a></p>"
             f"<p><b>Imports:</b> {imps}</p><p><b>Sessions:</b> {sess}</p>"
             f"<b>History:</b><ul>{hist or '<li>—</li>'}</ul></div></details>")
 
@@ -344,6 +344,31 @@ def render_html(open_after: bool = False) -> pathlib.Path:
         return out
 
     graph_json = json.dumps(slim(tree["root"]))
+    # Summary bullets — the "what am I looking at" panel
+    flat_all = dict(_flat_items(tree))
+    n_files = len(flat_all)
+    role_counts: dict[str, int] = {}
+    for n in flat_all.values():
+        r = (n.get("role") or "other").split(":")[0]
+        role_counts[r] = role_counts.get(r, 0) + 1
+    roles_line = " · ".join(f"{k} {v}" for k, v in sorted(role_counts.items(), key=lambda x: -x[1])[:6])
+    hot5 = sorted(flat_all.values(), key=lambda n: -n.get("churn_30d", 0))[:5]
+    hot_lis = "".join(
+        f"<li><code>{html.escape(n['id'])}</code> ×{n['churn_30d']}"
+        f"{(' — ' + html.escape(n['history'][0]['why'])) if n.get('history') else ''}</li>"
+        for n in hot5 if n.get("churn_30d", 0)
+    ) or "<li class='dim'>no churn in the last 30 days</li>"
+    n_no_purpose = sum(1 for n in flat_all.values() if not n.get("purpose") and n["id"].endswith(".py"))
+    summary_html = f"""
+<div style='background:#161b23;border:1px solid #2a3340;border-radius:8px;padding:.9rem 1.1rem;margin:.8rem 0 1rem'>
+<b>Summary</b>
+<ul style='margin:.4rem 0 0 1.2rem;line-height:1.7'>
+<li><b>{n_files}</b> source files · roles: {roles_line}</li>
+<li>Hottest (30-day churn · latest why):<ul style='margin-left:1.2rem'>{hot_lis}</ul></li>
+<li>{'⚠ <b>' + str(n_no_purpose) + '</b> Python file(s) missing a purpose docstring' if n_no_purpose else '✅ every Python file has a purpose docstring'}</li>
+<li class='dim'>Deterministic — AST + git only, no LLM · generated {html.escape(tree['generated_at'])}</li>
+</ul></div>"""
+
     all_sessions = sorted({s for _, n in _flat_items(tree) for s in n.get("sessions", [])}, reverse=True)
     opts = "".join(f"<option value='{html.escape(s)}'>{html.escape(s)}</option>" for s in all_sessions)
     body = node_html(tree["root"])
@@ -368,8 +393,14 @@ h1{{font-size:1.3rem}}summary{{cursor:pointer;padding:.2rem 0}}
 <h1>🩻 Raven Code-XRay — {html.escape(tree['repo'])}</h1>
 <p class='dim'>Generated {html.escape(tree['generated_at'])} · source: .raven/code-tree.json · deterministic (AST + git, no LLM)
 · <a style='color:#4a90d9' href='../index.html'>← dashboard</a></p>
+{summary_html}
 <div class='toolbar'>Session overlay: <select id='sess' onchange='hl(this.value)'>
-<option value=''>— none —</option>{opts}</select></div>
+<option value=''>— none —</option>{opts}</select>
+&nbsp;·&nbsp; Editor: <select id='ide' onchange='localStorage.setItem("raven-ide",this.value)'>
+<option value='vscode'>VS Code</option><option value='cursor'>Cursor</option>
+<option value='idea'>IntelliJ IDEA</option><option value='pycharm'>PyCharm</option>
+<option value='subl'>Sublime</option><option value='zed'>Zed</option>
+<option value='finder'>Reveal in Finder</option></select></div>
 <h2 style='font-size:1.05rem'>Graph view <span class='dim' style='font-weight:400'>(scroll = zoom at cursor · drag = pan · click folder = expand/collapse · hover = purpose + why)</span></h2>
 <p style='font-size:.8rem;margin:.2rem 0 .5rem'>
 <span style='color:#38b2ac'>●</span> folder&nbsp;
@@ -467,6 +498,19 @@ const COLORS={{guard:'#e05252',router:'#e0a030',hook:'#4a90d9',skill:'#9b6dd6',s
 }})();
 </script>
 <script>
+const IDE_URLS={{vscode:p=>'vscode://file'+p, cursor:p=>'cursor://file'+p,
+ idea:p=>'idea://open?file='+encodeURIComponent(p), pycharm:p=>'pycharm://open?file='+encodeURIComponent(p),
+ subl:p=>'subl://open?url='+encodeURIComponent('file://'+p), zed:p=>'zed://file'+p,
+ finder:p=>'file://'+p.split('/').slice(0,-1).join('/')}};
+(function(){{
+ const sel=document.getElementById('ide');
+ sel.value=localStorage.getItem('raven-ide')||'vscode';
+ document.querySelectorAll('.openIDE').forEach(a=>{{
+  a.onclick=e=>{{e.preventDefault();
+   const mk=IDE_URLS[sel.value]||IDE_URLS.vscode;
+   window.location.href=mk(a.dataset.path);}};
+ }});
+}})();
 function hl(s){{document.querySelectorAll('.prog').forEach(d=>{{
  const on=s&&(d.dataset.sessions||'').split(' ').includes(s);
  d.classList.toggle('hl',on); if(on){{let p=d.parentElement;while(p){{if(p.tagName==='DETAILS')p.open=true;p=p.parentElement;}}}}
