@@ -4,7 +4,7 @@ xray.py — Raven Code-XRay: deterministic JSON code tree of the repo (no LLM).
 
 The codebase is the skeleton; commit "whys" and session touches are
 annotations pinned to the exact node they describe. AST + paths + docstrings
-+ git only. Spec: docs/APPLY-PROMPT-code-tree-enterprise.md
++ git only. Spec: docs/AUDIT/APPLY-PROMPT-code-tree-enterprise.md
 
 Usage:
   python3 code-xray.py --build                      full scan → .raven/code-tree.json

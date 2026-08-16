@@ -50,3 +50,8 @@ raven-dash-kg.md
 **/.raven/state/
 **/.raven/.model-session.json
 .raven/code-xray.json
+
+# internal observation/knowledge logs + generated maps — local only
+docs/knowledge/internal_raven_ops.md
+docs/observations/security_log.md
+docs/raven-file-map.*
