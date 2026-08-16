@@ -2530,104 +2530,6 @@ def render_knowledge_graph_section(
 
 
 # ── Renderer: Static HTML ─────────────────────────────────────────────────────
-def render_code_map_section(metadata: dict) -> str:
-    """🗺️ Code Map — symbol/call structure from raven-xray.py's xray.json.
-
-    Deliberately NOT merged into the memory graph canvas above: 700+ code
-    symbols would drown ~25 memory nodes. Point queries + hotspots only.
-    """
-    xray_path = RAVEN_DIR / "xray.json"
-    if not xray_path.exists():
-        return (
-            '<h2 id="code-map">🗺️ Code Map</h2>'
-            '<div class="meta">Not built yet — it builds automatically at the end of the '
-            'next session (Stop hook, throttled). Python symbols, callers, and blast-radius '
-            'queries will appear here.</div>'
-        )
-    try:
-        cmap = json.loads(xray_path.read_text())
-    except Exception as e:
-        return f'<h2 id="code-map">🗺️ Code Map</h2><div class="meta">xray.json unreadable: {e}</div>'
-
-    nodes = cmap.get("nodes") or {}
-    edges = cmap.get("edges") or []
-
-    in_deg, out_deg = Counter(), Counter()
-    for e in edges:
-        in_deg[e["dst"]] += 1
-        out_deg[e["src"]] += 1
-
-    per_file = Counter(meta["file"] for meta in nodes.values())
-
-    hot_rows = ""
-    for nid, calls in in_deg.most_common(10):
-        m = nodes.get(nid) or {}
-        hot_rows += (
-            f"<tr><td><code>{m.get('name','?')}</code></td>"
-            f"<td>{m.get('file','?')}:{m.get('line','?')}</td>"
-            f"<td class='num'>{calls}</td></tr>\n"
-        )
-
-    file_rows = ""
-    for fpath, count in per_file.most_common(10):
-        file_rows += f"<tr><td>{fpath}</td><td class='num'>{count}</td></tr>\n"
-
-    # Compact symbol list for client-side search — name, location, degrees.
-    search_data = [
-        {"n": m["name"], "f": f"{m['file']}:{m['line']}", "t": m["type"],
-         "in": in_deg.get(nid, 0), "out": out_deg.get(nid, 0)}
-        for nid, m in nodes.items()
-    ]
-
-    return f"""
-  <h2 id="code-map">🗺️ Code Map</h2>
-  <div class="meta">
-    <strong>{len(per_file)}</strong> files · <strong>{len(nodes)}</strong> symbols ·
-    <strong>{len(edges)}</strong> call edges · built {cmap.get('generated_at', '?')}
-    <br><span style="color:#94a3b8;font-size:12px">Scope: {cmap.get('scope', '?')} —
-    dynamic dispatch (decorators, importlib, string-based calls) is not traced.
-    Query from any terminal, zero tokens: <code>python3 scripts/raven-xray.py --callers NAME</code>
-    · <code>--callees NAME</code> · <code>--impact NAME</code></span>
-  </div>
-  <div style="margin-bottom:16px">
-    <input id="cm-search" type="text" placeholder="Search symbols… (name, min 2 chars)"
-      style="width:100%;padding:10px 14px;background:#1e293b;border:1px solid #334155;border-radius:8px;color:#e2e8f0;font-size:14px"/>
-    <div id="cm-results" style="margin-top:8px"></div>
-  </div>
-  <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
-    <div>
-      <h3 style="color:#94a3b8;font-size:14px;margin-bottom:8px">Most-called symbols</h3>
-      <table><tr><th>Symbol</th><th>Where</th><th class="num">Callers</th></tr>
-      {hot_rows}</table>
-    </div>
-    <div>
-      <h3 style="color:#94a3b8;font-size:14px;margin-bottom:8px">Densest files (symbol count)</h3>
-      <table><tr><th>File</th><th class="num">Symbols</th></tr>
-      {file_rows}</table>
-    </div>
-  </div>
-  <script type="application/json" id="cm-data">{json.dumps(search_data)}</script>
-  <script>
-  (function() {{
-    var data = JSON.parse(document.getElementById('cm-data').textContent);
-    var input = document.getElementById('cm-search');
-    var out = document.getElementById('cm-results');
-    input.addEventListener('input', function() {{
-      var q = input.value.trim().toLowerCase();
-      if (q.length < 2) {{ out.innerHTML = ''; return; }}
-      var hits = data.filter(function(d) {{ return d.n.toLowerCase().indexOf(q) !== -1; }}).slice(0, 20);
-      if (!hits.length) {{ out.innerHTML = '<div class="meta">No symbols match.</div>'; return; }}
-      var html = '<table><tr><th>Symbol</th><th>Type</th><th>Where</th><th class="num">Callers</th><th class="num">Calls out</th></tr>';
-      hits.forEach(function(d) {{
-        html += '<tr><td><code>' + d.n + '</code></td><td>' + d.t + '</td><td>' + d.f +
-                '</td><td class="num">' + d['in'] + '</td><td class="num">' + d.out + '</td></tr>';
-      }});
-      out.innerHTML = html + '</table>';
-    }});
-  }})();
-  </script>
-"""
-
 
 def render_cost_log_section(metadata: dict) -> str:
     """💰 Cost Log — per-turn, per-model rows from .raven/cost-log.jsonl.
@@ -2848,7 +2750,7 @@ def render_html(
 
 %%CODE_TREE_SECTION%%
 
-  {render_code_map_section(metadata)}
+  
 
 """
 
@@ -2957,7 +2859,7 @@ def render_html(
     # ── Answer-first status strip (vibe-coder verdict + engineer numbers) ──
     hot_file, hot_why = "—", ""
     try:
-        ct = json.loads((Path(metadata.get("repo_root") or ".") / ".raven" / "code-tree.json").read_text())
+        ct = json.loads((Path(metadata.get("repo_root") or ".") / ".raven" / "code-xray.json").read_text())
         flat_ct: list = []
 
         def _walk_ct(n):
@@ -3005,7 +2907,7 @@ def render_html(
 
     # ── Code Tree section: repo-aware switcher next to the knowledge graph ──
     # Kick off tree builds for active repos with local clones (async, fail-soft).
-    ct_script = Path(__file__).resolve().parent / "tree.py"
+    ct_script = Path(__file__).resolve().parent / "xray.py"
     for _t, pname, _st, active_30d in repo_entries:
         if not active_30d or not ct_script.exists():
             continue

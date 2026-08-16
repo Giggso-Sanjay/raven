@@ -87,11 +87,6 @@
           },
           {
             "type": "command",
-            "command": "python3 \"${CLAUDE_PROJECT_DIR:-.}/.claude/scripts/raven-xray.py\" --build --if-stale 15 2>/dev/null || python3 \"${CLAUDE_PROJECT_DIR:-.}/scripts/session/raven-xray.py\" --build --if-stale 15 2>/dev/null || true",
-            "async": true
-          },
-          {
-            "type": "command",
             "command": "python3 \"${CLAUDE_PROJECT_DIR:-.}/.claude/scripts/obsidian-log.py\" 2>/dev/null || python3 \"${CLAUDE_PROJECT_DIR:-.}/scripts/memory/obsidian-log.py\" 2>/dev/null || true",
             "async": true
           },

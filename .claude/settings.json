@@ -64,7 +64,7 @@
           },
           {
             "type": "command",
-            "command": "python3 \"${CLAUDE_PROJECT_DIR:-.}/scripts/code-tree.py\" --digest 2>/dev/null || true",
+            "command": "python3 \"${CLAUDE_PROJECT_DIR:-.}/scripts/code-xray.py\" --digest 2>/dev/null || true",
             "timeout": 15,
             "async": false
           },
@@ -115,11 +115,6 @@
           },
           {
             "type": "command",
-            "command": "python3 \"${CLAUDE_PROJECT_DIR:-.}/.claude/scripts/session/raven-xray.py\" --build --if-stale 15 2>/dev/null || python3 \"${CLAUDE_PROJECT_DIR:-.}/scripts/session/raven-xray.py\" --build --if-stale 15 2>/dev/null || true",
-            "async": true
-          },
-          {
-            "type": "command",
             "command": "python3 \"${CLAUDE_PROJECT_DIR:-.}/.claude/scripts/memory/obsidian-log.py\" 2>/dev/null || python3 \"${CLAUDE_PROJECT_DIR:-.}/scripts/memory/obsidian-log.py\" 2>/dev/null || true",
             "async": true
           },
@@ -135,7 +130,7 @@
           },
           {
             "type": "command",
-            "command": "python3 \"${CLAUDE_PROJECT_DIR:-.}/scripts/code-tree.py\" --delta --session \"$(date +%Y-%m-%d)-$(basename \"${CLAUDE_PROJECT_DIR:-$PWD}\")\" 2>/dev/null; python3 \"${CLAUDE_PROJECT_DIR:-.}/scripts/code-tree.py\" --html 2>/dev/null || true",
+            "command": "python3 \"${CLAUDE_PROJECT_DIR:-.}/scripts/code-xray.py\" --delta --session \"$(date +%Y-%m-%d)-$(basename \"${CLAUDE_PROJECT_DIR:-$PWD}\")\" 2>/dev/null; python3 \"${CLAUDE_PROJECT_DIR:-.}/scripts/code-xray.py\" --html 2>/dev/null || true",
             "async": true
           }
         ]

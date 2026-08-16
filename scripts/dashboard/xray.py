@@ -1,16 +1,16 @@
 #!/usr/bin/env python3
 """
-code-tree.py — deterministic JSON code tree of the repo (no LLM).
+xray.py — Raven Code-XRay: deterministic JSON code tree of the repo (no LLM).
 
 The codebase is the skeleton; commit "whys" and session touches are
 annotations pinned to the exact node they describe. AST + paths + docstrings
 + git only. Spec: docs/APPLY-PROMPT-code-tree-enterprise.md
 
 Usage:
-  python3 code-tree.py --build                      full scan → .raven/code-tree.json
-  python3 code-tree.py --delta [--files f1 f2 …] [--session ID] [--commit SHA]
-  python3 code-tree.py --digest [--for-prompt "…"]  ≤1500-token context payload
-  python3 code-tree.py --html [--open]              self-contained tree view HTML
+  python3 code-xray.py --build                      full scan → .raven/code-tree.json
+  python3 code-xray.py --delta [--files f1 f2 …] [--session ID] [--commit SHA]
+  python3 code-xray.py --digest [--for-prompt "…"]  ≤1500-token context payload
+  python3 code-xray.py --html [--open]              self-contained tree view HTML
 """
 from __future__ import annotations
 
@@ -29,7 +29,7 @@ import tempfile
 REPO = pathlib.Path(
     os.environ.get("CLAUDE_PROJECT_DIR") or pathlib.Path(__file__).resolve().parent.parent.parent
 )
-TREE_PATH = REPO / ".raven" / "code-tree.json"
+TREE_PATH = REPO / ".raven" / "code-xray.json"
 VAULT = pathlib.Path(os.environ.get("RAVEN_VAULT", str(pathlib.Path.home() / "RavenVault")))
 TREES_DIR = VAULT / "dashboard" / "trees"
 HTML_PATH = TREES_DIR / (REPO.name + ".html")
@@ -267,7 +267,7 @@ def digest(for_prompt: str | None = None) -> str:
     tree = _load() or build()
     flat: dict[str, dict] = {}
     _flatten(tree["root"], flat)
-    lines = ["🌳 Raven code tree (.raven/code-tree.json)"]
+    lines = ["🩻 Raven Code-XRay (.raven/code-xray.json)"]
     mods: dict[str, int] = {}
     for rel in flat:
         top = rel.split("/")[0] if "/" in rel else "(root)"
@@ -290,7 +290,7 @@ def digest(for_prompt: str | None = None) -> str:
         for n in matched:
             lines.append(f"\nNode {n['id']}:")
             lines.append(json.dumps({k: n[k] for k in ("role", "purpose", "history", "sessions", "imports")}, indent=1))
-    lines.append("Read the relevant subtree of .raven/code-tree.json before editing a file.")
+    lines.append("Read the relevant subtree of .raven/code-xray.json before editing a file.")
     text = "\n".join(lines)
     return text[:6000]  # ~1500 tokens hard cap
 
@@ -348,7 +348,7 @@ def render_html(open_after: bool = False) -> pathlib.Path:
     opts = "".join(f"<option value='{html.escape(s)}'>{html.escape(s)}</option>" for s in all_sessions)
     body = node_html(tree["root"])
     page = f"""<!doctype html><html><head><meta charset="utf-8">
-<title>Raven Code Tree — {html.escape(tree['repo'])}</title><style>
+<title>Raven Code-XRay — {html.escape(tree['repo'])}</title><style>
 :root{{color-scheme:dark}}body{{background:#12161c;color:#e2e8f0;font:14px/1.5 -apple-system,Segoe UI,sans-serif;margin:2rem auto;max-width:960px;padding:0 1rem}}
 h1{{font-size:1.3rem}}summary{{cursor:pointer;padding:.2rem 0}}
 .mod{{font-weight:600;color:#a8b3c0}}.kids{{margin-left:1.2rem;border-left:1px solid #2a3340;padding-left:.8rem}}
@@ -365,7 +365,7 @@ h1{{font-size:1.3rem}}summary{{cursor:pointer;padding:.2rem 0}}
 .zb{{background:#1a212b;color:#e2e8f0;border:1px solid #3a4656;border-radius:4px;width:34px;height:28px;cursor:pointer;font-size:14px}}
 .zb:hover{{background:#243447}}.zb:last-child{{width:auto;padding:0 .5em}}
 </style></head><body>
-<h1>🌳 Raven Code Tree — {html.escape(tree['repo'])}</h1>
+<h1>🩻 Raven Code-XRay — {html.escape(tree['repo'])}</h1>
 <p class='dim'>Generated {html.escape(tree['generated_at'])} · source: .raven/code-tree.json · deterministic (AST + git, no LLM)
 · <a style='color:#4a90d9' href='../index.html'>← dashboard</a></p>
 <div class='toolbar'>Session overlay: <select id='sess' onchange='hl(this.value)'>
@@ -509,7 +509,7 @@ def main() -> None:
         if not (REPO / ".git").exists():
             print(f"code-tree: {REPO} is not a git repo", file=sys.stderr)
             return
-        TREE_PATH = REPO / ".raven" / "code-tree.json"
+        TREE_PATH = REPO / ".raven" / "code-xray.json"
         HTML_PATH = TREES_DIR / f"{REPO.name}.html"
 
     if args.build:

@@ -45,7 +45,7 @@ def _fmt_usd(v: float) -> str:
 def _hot_file() -> tuple[str, str]:
     try:
         root = pathlib.Path(os.environ.get("CLAUDE_PROJECT_DIR") or ".").resolve()
-        ct = json.loads((root / ".raven" / "code-tree.json").read_text())
+        ct = json.loads((root / ".raven" / "code-xray.json").read_text())
         flat: list[dict] = []
 
         def walk(n):
@@ -241,7 +241,7 @@ label.chk{{color:var(--ink2);font-size:13px;cursor:pointer}}
 <aside>
   <h1>🪶 Raven <span>{_esc(proj)} · {_esc(metadata.get('git_branch') or '')}</span></h1>
   <button class="nav on" data-v="home"><span class="ic">⬛</span>Overview</button>
-  <button class="nav" data-v="tree"><span class="ic">🌳</span>Code Tree</button>
+  <button class="nav" data-v="tree"><span class="ic">🩻</span>Code-XRay</button>
   <button class="nav" data-v="repos"><span class="ic">📦</span>Repos</button>
   <button class="nav" data-v="costs"><span class="ic">💰</span>Costs</button>
   <button class="nav" data-v="guards"><span class="ic">🛡</span>Guards</button>
@@ -264,7 +264,7 @@ label.chk{{color:var(--ink2);font-size:13px;cursor:pointer}}
 </section>
 
 <section class="view" id="v-tree">
-  <h2>Code Tree</h2>
+  <h2>Code-XRay</h2>
   <p class="sub">What the codebase looks like, and why each file changed — zoom with scroll, drag to pan.</p>
   <div class="toolrow"><span class="dim">Repo:</span>
     <select id="treeSel" onchange="setTree(this.value)">{tree_opts}</select>

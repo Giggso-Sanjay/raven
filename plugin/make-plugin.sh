@@ -72,6 +72,7 @@ for script in \
     knowledge-extract.py \
     knowledge_graph.py \
     dashboard.py \
+    code-xray.py \
     code-tree.py \
     cve-prompt-guard.py \
     cve-check.py \
