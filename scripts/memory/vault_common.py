@@ -68,6 +68,36 @@ def dashboard_link_oneline(when: str = "") -> str:
     return f"📊 Dashboard{when_bit}: {dashboard_path()}  ·  open {dashboard_uri()}"
 
 
+def write_project_dashboard_link(project_root: pathlib.Path, project: str) -> pathlib.Path:
+    """Write .raven/dashboard-link.md in the project's own repo — a pointer
+    to the shared vault dashboard, scoped to this project via --current-project.
+
+    The dashboard itself is one shared file (rebuilt on demand, not per-project
+    output) — this just gives each repo a fixed place to find "its" view.
+    """
+    raven_dir = project_root / ".raven"
+    raven_dir.mkdir(parents=True, exist_ok=True)
+    link_path = raven_dir / "dashboard-link.md"
+    now = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    link_path.write_text(
+        f"""# Raven Dashboard — {project}
+
+Generated: {now}
+
+Shared vault dashboard: `{dashboard_path()}`
+Open: {dashboard_uri()}
+
+To view this repo's slice, regenerate scoped to it:
+
+    python3 scripts/dashboard.py --current-project --html --open
+
+(Run from this repo. `--current-project` resolves the project from
+`.raven/manifest.json` or the git remote — no need to pass `--project` by hand.)
+"""
+    )
+    return link_path
+
+
 def run(cmd: list, **kw) -> str:
     try:
         return subprocess.check_output(

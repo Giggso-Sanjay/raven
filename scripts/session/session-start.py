@@ -668,11 +668,20 @@ def main():
         _script_dir = Path(__file__).resolve().parent
         if str(_script_dir) not in sys.path:
             sys.path.insert(0, str(_script_dir))
-        from vault_common import dashboard_link_lines, dashboard_link_oneline  # noqa: E402
+        from vault_common import (  # noqa: E402
+            dashboard_link_lines,
+            dashboard_link_oneline,
+            write_project_dashboard_link,
+            get_project,
+        )
 
         _dash_block = "\n".join(dashboard_link_lines(when="session start"))
         context = _dash_block + "\n\n" + context
         _dash_one = dashboard_link_oneline(when="session start")
+        try:
+            write_project_dashboard_link(find_project_root(), get_project(find_project_root()))
+        except Exception:
+            pass  # pointer file is best-effort, never blocks session start
     except Exception:
         _dash_one = "📊 Dashboard: ~/RavenVault/dashboard.html"
         context = _dash_one + "\n\n" + context
