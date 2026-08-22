@@ -1,0 +1,1 @@
+BEFORE any reply — git/status is not a skip (empty Logs = you skipped): `python3 scripts/routing/model-router.py --prompt "<message>"`. Line 1 `🔀 Router`. Line 2 `💰 total-cost=`. Line 3 `session=`. Line 4 `Intent: plan|debug|direct`. Then work. First load: `ide-boot.py`. **raven dashboard** → `--open`. Educate guided until go-ahead.

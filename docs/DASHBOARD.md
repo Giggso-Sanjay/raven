@@ -11,9 +11,9 @@ data leaves your machine, and the page works offline (`file://`, no CDN).
 python3 scripts/dashboard.py --html --open
 ```
 
-The dashboard is also rebuilt automatically at every session start and session end
-(via the `SessionStart` and `Stop` hooks), so the file on disk is always current —
-you can just open `file:///Users/<you>/RavenVault/dashboard.html` in a browser.
+The dashboard is rebuilt on **Stop** (`dashboard.py --if-stale 15`), not by injecting
+the vault into the agent. Open `~/RavenVault/dashboard.html` in a browser. Agent boot
+uses `ide-boot.py` + `.raven/memory/CARD.md`, which lists this dashboard path.
 
 ## What it shows
 

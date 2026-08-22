@@ -39,9 +39,9 @@
           },
           {
             "type": "command",
-            "timeout": 5,
-            "async": false,
-            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/scripts/vault-load.py\" 2>/dev/null || true"
+            "timeout": 8,
+            "async": true,
+            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/scripts/memory/ide-boot.py\" --session-start 2>/dev/null || python3 \"${CLAUDE_PROJECT_DIR:-.}/scripts/memory/ide-boot.py\" --session-start 2>/dev/null || true"
           }
         ]
       }
@@ -85,7 +85,7 @@
           {
             "type": "command",
             "async": true,
-            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/scripts/raven-xray.py\" 2>/dev/null || true"
+            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/scripts/code-xray.py\" --html --if-stale 15 2>/dev/null || python3 \"${CLAUDE_PROJECT_DIR:-.}/scripts/code-xray.py\" --html --if-stale 15 2>/dev/null || true"
           },
           {
             "type": "command",

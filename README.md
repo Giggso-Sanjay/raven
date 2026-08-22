@@ -73,8 +73,32 @@ This is also where **Andie-Jr** earns its keep: once the manifest is in place, a
 - **61 domain skills** — FastAPI, Postgres, K8s, Terraform, Salesforce, Odoo, Oracle, AWS/GCP/Azure, and more, loaded only when your work matches
 - **Local guards** — secret scan + CVE check (CVSS >7 blocks) at every commit; optional edit gate (`raven-skill-gate`, shadow/soft/hard modes); style and architecture checks
 - **Cost-aware model routing** — prompts classified to the cheapest adequate tier; secret-laden context forced to a local model
-- **Educated Push Gate** — hook-enforced human approval loop: Claude must present a ≤200-word briefing (what/how/files affected) and get your `go ahead` before any file write or mutating command; afterwards it confirms in ≤150 words. First change of each session asks you to pick `guided` (the loop) or `auto` (gate open, you own risk). Read-only research always passes; runs in Python hooks — zero tokens
-- **Audit + memory** — JSONL audit logs, session notes, token dashboard ([docs/DASHBOARD.md](docs/DASHBOARD.md)) — all on local disk
+- **Educate (default guided)** — `.raven/educate.json` (missing = guided). Claude PreToolUse **denies** writes until `go ahead`. Other IDEs: same loop from the boot file (`educate=`). Off: `educate off` or `Lucky` (persists; SessionStart does not wipe the file). Read-only research always passes.
+- **Audit + memory** — JSONL audit logs; **human** notes in `~/RavenVault` (Obsidian + dashboard); **agent** start is **not** the vault. First load is `scripts/memory/ide-boot.py` (`load=1` → Read `.raven/memory/CARD.md` only).
+
+## Agent memory and IDE hosts
+
+Agents do **not** inject `~/RavenVault` or `knowledge-graph.json` at boot. `vault-load.py` is a **manual** CLI only.
+
+| Step | What |
+|---|---|
+| **Stop** | `obsidian-log.py` writes the vault session note **and** `.raven/memory/CARD.md` (schema 1, project from this `manifest.json`, open questions/decisions, dashboard path). |
+| **First load** | `python3 scripts/memory/ide-boot.py` — prints `host`, `rules`, `load=0\|1`, `memory=`, `educate=`. If `load=1`, Read **only** that memory path. |
+| **Map** | `.raven/boot.json` — env → host → native one-line rules file. |
+
+| Host | Env (any) | Native file (one line: run `ide-boot.py`) |
+|---|---|---|
+| Claude Code | `CLAUDECODE`, `CLAUDE_PLUGIN_ROOT` | `CLAUDE.md` |
+| Grok | `GROK_AGENT`, `GROK_SESSION_ID` | `AGENTS.md` |
+| Codex | `CODEX_HOME`, `CODEX_THREAD_ID` | `AGENTS.md` |
+| Cursor | `CURSOR_AGENT`, `CURSOR_TRACE_ID` | `AGENTS.md` |
+| AntiGravity | `ANTIGRAVITY`, `ANTIGRAVITY_CLI_ALIAS` | `.agents/agents.md` |
+| Windsurf | `WINDSURF`, `WINDSURF_IDE` | `.windsurf/rules/ide-boot.md` |
+| Replit | `REPL_ID`, `REPL_OWNER` | `replit.md` |
+| Gemini CLI | `GEMINI_CLI` | `GEMINI.md` |
+| unknown | none of the above | `AGENTS.md` + card still if `load=1` |
+
+Claude `SessionStart` runs `session-start.py` only (**no** `vault-load`). Codex/Grok/Cursor have no Claude hooks — they rely on `AGENTS.md` + the router. Dashboard for humans: `~/RavenVault/dashboard.html`. Details: [docs/RAVENVAULT-GRAPH-AND-MEMORY.md](docs/RAVENVAULT-GRAPH-AND-MEMORY.md). Later-removal candidates (shims, old digest, vault KG on the dashboard): [docs/DEPRECATIONS.md](docs/DEPRECATIONS.md) — **do not delete in this version**.
 
 ## When to Use Raven — Use Case Table
 

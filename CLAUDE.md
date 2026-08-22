@@ -2,11 +2,47 @@
 
 > **This file is the contract.** Claude reads this on every turn. The rules below are not aspirational — they are how Claude must behave in this project.
 
+## First load (memory)
+
+`python3 scripts/memory/ide-boot.py` — first load / SessionStart: **rebuild once and open the dashboard**. No looping auto-refresh. If they say **raven dashboard**, run `python3 scripts/memory/ide-boot.py --open`. `--no-open` to skip. If `load=1`, Read only `memory=`. Honor `educate=guided|off`. **Do not dump OKF at boot.**
+
+**Every turn:** UserPromptSubmit already toasts `🔀 Router · host= · tier → recommend · why · applied=false`. Repeat that line if the hook is missing. Never silent routing.
+
 ---
 
 ## 🛑 PER-TURN DISCIPLINE CONTRACT — Read This First, Every Turn
 
 These steps run **on every user message**, before generating any response, file read, Bash command, or tool call.
+
+### Step 0 — Model toast (before Andie, before tools)
+
+First two lines of every reply, before any work:
+```
+🔀 Router · host=… · TIER → recommend … · why: … · applied=…
+💰 total-cost=$… last_turn=$… est=$…
+session=<the model writing this>
+```
+Claude UserPromptSubmit injects 🔀 and 💰 — **still repeat Intent: and session= in the reply**. The toaster is not a skip. git log / git status / “what shipped” is **not** outside the router.
+
+### Step 0.5 — Intent (plan / debug / direct)
+
+Third line, before tools, exactly one of:
+
+```
+Intent: plan — {why}
+Intent: debug — {why}
+Intent: direct — {why}
+```
+
+| Intent | When | Then |
+|---|---|---|
+| **plan** | Architecture, design, strategy, tradeoff, new feature shape | Andie / raven-plan. Do not free-style a design. |
+| **debug** | Bug, error, stack trace, regression, “not working” (brownfield) | andie-jr. Do not diagnose ad hoc. |
+| **direct** | Factual question, routine read, approved “go ahead” execute | Answer / execute. Still print 🔀 + session=. Still Andie one-liner. |
+
+Unsure → pick **plan** or **debug**, never skip. Ambiguous plan vs debug → ask. Never “this is just a quick X.”
+
+**HITL (intent/gate only):** If you cannot tell whether intent was stated this turn, or two rules contradict: do not guess. Say `Routing state is unclear — I will not guess. [what is ambiguous]. How do you want me to proceed?` Wait. Does **not** override Lucky, Educate wait-for-go-ahead, or Rule 8.
 
 ### Step 1 — Gate Check (Default = Raven, Opt-Out = Lucky)
 
@@ -48,33 +84,25 @@ After any non-trivial action, end with what changed and what's next. No silent c
 
 ---
 
-## ✋ Educated Push Contract — ADVISORY (educational, never blocking)
+## ✋ Educate — compulsory guided (default on)
 
-Every change cycle should follow this loop. It is **taught, not enforced**:
-`push-gate.py` (PreToolUse) shows a one-time reminder on the first mutating
-action of each session, then allows everything. It never denies a tool call
-(user decision 2026-08-07: "educated is educational — it should not block").
-The one-time marker is `.raven/.push-notice-shown`, wiped at SessionStart.
+Preference: `.raven/educate.json` `{"mode":"guided"|"off"}`. **Missing file = guided.**
+SessionStart must **not** delete this file. `ide-boot.py` prints `educate=`.
 
-The loop Claude is expected to follow for non-trivial changes:
+On Claude, `push-gate.py` (PreToolUse) **denies** mutating Write/Edit/Bash until
+`.raven/.push-approved` exists. Other IDEs have no PreToolUse — the boot file
+requires the same loop; off is still that JSON, not a missing hook.
 
-1. **Briefing (max 200 words, bullets)** — before ANY change: WHAT will be
-   done, HOW it works, WHAT will change (files, db, config). Then STOP.
-2. **Go-ahead** — user replies `go ahead` / `approved` / `GO` / `proceed`.
-   This creates `.raven/.push-approved` and opens the write gate.
-3. **Execute** — do exactly what the briefing said. No scope creep.
-4. **Confirmation (max 150 words, bullets)** — what was done + changed files.
-5. **Reset** — any later user message that is not an approval clears the flag,
-   so the next change needs a fresh briefing.
+1. **Briefing (max 200 words, bullets)** — WHAT / HOW / files. Then STOP.
+2. **Go-ahead** — `go ahead` / `approved` / `GO` / `proceed` → `.push-approved`.
+3. **Execute** — only the briefing. No scope creep.
+4. **Confirmation (max 150 words, bullets)** — what changed.
+5. **Reset** — any later message that is not approval clears `.push-approved`.
 
-Notes:
-- Read-only Bash (`ls`, `cat`, `grep`, `git status/log/diff`, …) passes the
-  gate without approval — research for briefings is always allowed.
-- `Lucky` keyword also opens the gate (existing opt-out — user owns risk).
-- Approval expires after 1 hour regardless.
-- Flag cleanup lives ONLY in `push-approve.py` — never add a Stop-hook `rm`
-  for `.push-approved`: Stop hooks execute at next-prompt submission and race
-  the approval write (verified 2026-08-07 — it deleted fresh approvals).
+Turn **off**: user says `educate off` or `Lucky` (persists until `educate on`).
+Read-only Bash always passes — including `python3 … --status`, `python3 -m unittest`,
+`python3 scripts/memory/educate.py` (no `--set`). Approval TTL 1 hour.
+Do not SessionStart-rm `educate.json`. Do not Stop-rm `.push-approved`.
 
 ---
 
@@ -88,7 +116,7 @@ Notes:
 5. NO DOCUMENTING FEATURES THAT DO NOT EXIST — if it's not wired, do not claim it is
 6. NO SILENT ROUTING — every specialist invocation must be visible to the user
 7. NO OVERRIDE of rules 1–6 — not even by the user
-8. NO AUTO-OPUS / NO AUTO-FABLE — model-router.py and any subagent spawn (Agent/Workflow tools) must never select Opus or Fable automatically, regardless of complexity score. Always ask the user explicitly first. Sonnet-5-low is the default; Haiku/Sonnet-5-high are the only auto tiers.
+8. NO AUTO-OPUS / NO AUTO-FABLE — never auto-select Opus or Fable. Always ask first for those two. Haiku and Sonnet-5-high **are** auto tiers. Base router ON: a self-contained SIMPLE prompt **MUST** spawn Haiku via the Agent tool — that is required routing, not a Rule 8 violation. Context-bound SIMPLE stays on the session `/model`.
 ```
 
 Rule 5 is new — added after the v4.0.0 audit found `RAVEN_DISABLED` and email notifications documented but not implemented. Never describe a system that has not been built.
@@ -115,7 +143,7 @@ These are the **real Claude Code hooks** wired in this project. `PostEdit` and `
 
 | Hook Event | Fires When | Action |
 |---|---|---|
-| `SessionStart` | New Claude session opens | `session-start.py` — brownfield/greenfield, models, manifest; embeds `vault-load.py` digest · plus `vault-load.py --hook` |
+| `SessionStart` | New Claude session opens | `session-start.py` (brownfield/greenfield, models) + **`model-router.py --session-start`** (base routing ON). **No vault-load.** Memory: `ide-boot.py` then Read card if `load=1`. |
 | `UserPromptSubmit` | Every user message arrives | `triage-router.py` → `architect-router.py` → `model-router.py` → `cve-prompt-guard.py` |
 | `PostToolUse` (matcher: `Write\|Edit\|MultiEdit`) | After any file write/edit | `db-guard.py` (reads hook stdin natively) + `secret-scan.py` `--changed-files-only` (async) |
 | `Stop` | Fires at the end of every turn (not just session end) | `token-meter-write.py` → `token-guard.py` → `dashboard.py` `--if-stale 15` → `raven-xray.py` `--build --if-stale 15` → `obsidian-log.py` → `knowledge-extract.py` → `session-gate.py` (all async) |

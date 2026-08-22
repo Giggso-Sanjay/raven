@@ -42,9 +42,9 @@
           },
           {
             "type": "command",
-            "command": "python3 \"${CLAUDE_PROJECT_DIR:-.}/.claude/scripts/vault-load.py\" --hook 2>/dev/null || python3 \"${CLAUDE_PROJECT_DIR:-.}/scripts/memory/vault-load.py\" --hook 2>/dev/null || true",
-            "timeout": 5,
-            "async": false
+            "command": "python3 \"${CLAUDE_PROJECT_DIR:-.}/scripts/memory/ide-boot.py\" --session-start 2>/dev/null || true",
+            "timeout": 8,
+            "async": true
           }
         ]
       }

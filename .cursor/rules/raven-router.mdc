@@ -1,0 +1,6 @@
+---
+description: Raven router and cost must run every user turn
+alwaysApply: true
+---
+
+Before any git, read, or answer: run `python3 scripts/routing/model-router.py --prompt "<user message>"`. Print 🔀 then 💰 then session= then Intent:. git log/status is not an exemption. Skipping leaves dashboard Logs empty for this IDE.

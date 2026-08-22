@@ -5,6 +5,15 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 
 ---
 
+## [Unreleased] — agent boot card + IDE router
+
+- **Stop** writes `.raven/memory/CARD.md` (in-repo). Vault stays `~/RavenVault` for humans.
+- **SessionStart** no longer runs `vault-load.py`. `vault-load.py` is manual only.
+- **First load:** `scripts/memory/ide-boot.py` + `.raven/boot.json` (`load=0|1`).
+- Hosts: Claude (`CLAUDE.md`), Grok/Codex/Cursor (`AGENTS.md`), AntiGravity (`.agents/agents.md`), Windsurf, Replit (`replit.md`), Gemini (`GEMINI.md`).
+
+---
+
 ## [4.3.0] — 2026-08-04
 
 ### Tokenomics metering + vibe-coder dashboard

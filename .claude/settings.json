@@ -40,6 +40,11 @@
         "hooks": [
           {
             "type": "command",
+            "command": "python3 \"${CLAUDE_PROJECT_DIR:-.}/scripts/routing/route-gate.py\"",
+            "timeout": 5
+          },
+          {
+            "type": "command",
             "command": "python3 \"${CLAUDE_PROJECT_DIR:-.}/.claude/scripts/push-gate.py\"",
             "timeout": 5
           }
@@ -58,16 +63,17 @@
           },
           {
             "type": "command",
-            "command": "python3 \"${CLAUDE_PROJECT_DIR:-.}/.claude/scripts/memory/vault-load.py\" --hook 2>/dev/null || python3 \"${CLAUDE_PROJECT_DIR:-.}/scripts/memory/vault-load.py\" --hook 2>/dev/null || true",
-            "timeout": 5,
-            "async": false
+            "command": "python3 \"${CLAUDE_PROJECT_DIR:-.}/scripts/memory/ide-boot.py\" --session-start 2>/dev/null || true",
+            "timeout": 8,
+            "async": true
           },
           {
             "type": "command",
-            "command": "python3 \"${CLAUDE_PROJECT_DIR:-.}/scripts/code-xray.py\" --digest 2>/dev/null || true",
-            "timeout": 15,
+            "command": "python3 \"${CLAUDE_PROJECT_DIR:-.}/scripts/routing/model-router.py\" --session-start 2>/dev/null || true",
+            "timeout": 5,
             "async": false
           },
+
           {
             "type": "command",
             "command": "rm -f \"${CLAUDE_PROJECT_DIR:-.}/.raven/.push-mode\" \"${CLAUDE_PROJECT_DIR:-.}/.raven/.push-approved\" \"${CLAUDE_PROJECT_DIR:-.}/.raven/.push-notice-shown\"",

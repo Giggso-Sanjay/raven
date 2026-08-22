@@ -147,70 +147,112 @@ def _find_project_root() -> Path:
     return d
 
 
-def _load_model_env() -> Dict[str, str]:
-    """
-    Load .model.env and extract tier → model mapping.
+def detect_host(env: Optional[Dict] = None) -> str:
+    """Same host keys as ide-boot / .raven/boot.json."""
+    env = env if env is not None else os.environ
+    boot = _find_project_root() / ".raven" / "boot.json"
+    hosts = {}
+    try:
+        hosts = json.loads(boot.read_text(encoding="utf-8")).get("hosts") or {}
+    except (OSError, json.JSONDecodeError, TypeError):
+        pass
+    for name, spec in hosts.items():
+        for key in (spec or {}).get("env_any") or []:
+            if env.get(key):
+                return name
+    return "unknown"
 
-    Actual format (written by session-start.py):
-        [routing]
-        LOCAL_ONLY = ollama/dolphin-mistral:latest
-        SIMPLE     = ollama/dolphin-mistral:latest
-        MEDIUM     = anthropic/claude-sonnet-4-5
-        COMPLEX    = anthropic/claude-opus-4-5
 
-    Returns {tier: "provider/model"} dict
-    """
-    # Check project-local first (resolved via repo root, not cwd), then home.
-    model_env_path = _find_project_root() / ".model.env"
-    if not model_env_path.exists():
-        model_env_path = Path.home() / ".model.env"
+def format_turn_toast(tier: str, model: str, reasons: List[str], host: str = "", prompt_chars: int = 0) -> str:
+    """One line every turn: host, tier, recommend, why, applied=false."""
+    host = host or detect_host()
+    why = ", ".join(r.split(":", 1)[0] for r in (reasons or [])[:2]) or "no strong signals"
+    spawn = ""
+    if host == "grok" and model == "grok-4.5":
+        spawn = " · MUST spawn_subagent model=grok-4.5"
+    elif host == "grok" and model == "grok-4.6":
+        spawn = " · stay grok-4.6"
+    money = ""
+    try:
+        _cc_dir = Path(__file__).resolve().parents[1] / "session"
+        if str(_cc_dir) not in sys.path:
+            sys.path.insert(0, str(_cc_dir))
+        from cost_calc import start_money_line
+        money = start_money_line(model, prompt_chars or 0)
+    except Exception:
+        money = "💰 total-cost=? last_turn=? est=?"
+    return (
+        f"🔀 Router · host={host} · {tier} → recommend {model} "
+        f"· why: {why} · applied=false until spawn{spawn}\n{money}"
+    )
 
-    # Opus and Fable are intentionally excluded from these defaults — the
-    # router must never auto-select either; escalation requires an explicit
-    # user ask regardless of tier or score.
-    defaults = {
-        "SIMPLE": "anthropic/claude-haiku-4-5",
-        "MEDIUM": "anthropic/claude-sonnet-5",
-        "COMPLEX": "anthropic/claude-sonnet-5-high",
+
+def _host_tier_defaults(host: str) -> Dict[str, str]:
+    boot = _find_project_root() / ".raven" / "boot.json"
+    try:
+        hosts = json.loads(boot.read_text(encoding="utf-8")).get("hosts") or {}
+        tiers = (hosts.get(host) or {}).get("tiers") or {}
+        if isinstance(tiers, dict) and tiers:
+            out = {k: str(v) for k, v in tiers.items() if k in ("SIMPLE", "MEDIUM", "COMPLEX", "LOCAL_ONLY")}
+            if out:
+                return out
+    except (OSError, json.JSONDecodeError, TypeError):
+        pass
+    if host == "claude":
+        return {
+            "SIMPLE": "anthropic/claude-haiku-4-5",
+            "MEDIUM": "anthropic/claude-sonnet-5",
+            "COMPLEX": "anthropic/claude-sonnet-5-high",
+            "LOCAL_ONLY": "ollama/dolphin-mistral",
+        }
+    return {
+        "SIMPLE": f"{host}-fast" if host != "unknown" else "session-fast",
+        "MEDIUM": host if host != "unknown" else "session-default",
+        "COMPLEX": f"{host}-high" if host != "unknown" else "session-high",
         "LOCAL_ONLY": "ollama/dolphin-mistral",
     }
 
+
+def _load_model_env(host: str = "") -> Dict[str, str]:
+    """Tier map for this IDE. boot.json hosts.*.tiers, then .model.env [routing.HOST] or [routing]."""
+    host = host or detect_host()
+    defaults = _host_tier_defaults(host)
+    model_env_path = _find_project_root() / ".model.env"
+    if not model_env_path.exists():
+        model_env_path = Path.home() / ".model.env"
     if not model_env_path.exists():
         return defaults
 
-    models = {}
-    in_routing = False
-
+    models = dict(defaults)
+    host_section = f"[routing.{host}]"
+    current = None
+    host_hit = False
     try:
         with open(model_env_path, "r") as f:
             for line in f:
                 line = line.strip()
                 if not line or line.startswith("#") or line.startswith(";"):
                     continue
-
-                # Detect [routing] section
-                if line == "[routing]":
-                    in_routing = True
+                if line.startswith("["):
+                    current = line
                     continue
-                elif line.startswith("["):
-                    in_routing = False
+                if "=" not in line:
                     continue
-
-                # Parse TIER = provider/model within [routing]
-                if in_routing and "=" in line:
-                    key, val = line.split("=", 1)
-                    tier = key.strip()
-                    model_str = val.strip()
-                    if tier in ("LOCAL_ONLY", "SIMPLE", "MEDIUM", "COMPLEX"):
-                        models[tier] = model_str
+                key, val = line.split("=", 1)
+                tier = key.strip()
+                if tier not in ("LOCAL_ONLY", "SIMPLE", "MEDIUM", "COMPLEX"):
+                    continue
+                if current == host_section:
+                    models[tier] = val.strip()
+                    host_hit = True
+                elif current == "[routing]" and host in ("claude", "unknown") and not host_hit:
+                    models[tier] = val.strip()
     except Exception as e:
         print(f"Warning: Failed to parse .model.env: {e}", file=sys.stderr)
 
-    # Fill missing tiers with defaults
     for tier, default_model in defaults.items():
         if tier not in models:
             models[tier] = default_model
-
     return models
 
 
@@ -243,9 +285,9 @@ def classify(
     else:
         tier = "SIMPLE"
 
-    # Load model config and get model for this tier
-    models = _load_model_env()
-    model_string = models.get(tier, "anthropic/claude-sonnet-4-5")
+    host = detect_host()
+    models = _load_model_env(host)
+    model_string = models.get(tier, models.get("MEDIUM", "session-default"))
 
     return tier, score, reasons, model_string
 
@@ -308,10 +350,26 @@ def write_session_json(tier: str, score: int, reasons: List[str], model: str, pr
             "score": score,
             "reasons": reasons,
             "model_for_tier": model,
-            # prompt length feeds the cost-log's pre-turn estimate column
-            # (est tokens ≈ chars/4) — the hash alone can't reconstruct size
+            "recommended_model": model,
+            "host": detect_host(),
+            "applied": False,
+            "note": "recommended only — session model unchanged unless this IDE swapped (LiteLLM not wired)",
             "prompt_chars": len(prompt),
         }
+        try:
+            _cc_dir = Path(__file__).resolve().parents[1] / "session"
+            if str(_cc_dir) not in sys.path:
+                sys.path.insert(0, str(_cc_dir))
+            from cost_calc import estimate as _est
+            est = _est(model, len(prompt))
+            bucket["last_classification"].update({
+                "est_cost_usd": est.get("est_cost_usd"),
+                "tokens_in_est": est.get("tokens_in_est"),
+                "needs_rate": est.get("needs_rate"),
+                "in_router": est.get("in_router"),
+            })
+        except Exception:
+            pass
 
     # Write atomically
     try:
@@ -336,7 +394,23 @@ def load_router_state() -> Dict:
             return json.loads(p.read_text())
     except Exception:
         pass
-    return {"mode": "default", "session_id": "", "announced": False}
+    return {
+        "mode": "router",
+        "session_id": "",
+        "announced": False,
+        "backend": "claude",
+        "mandatory": True,
+    }
+
+
+def arm_base_router() -> Dict:
+    """SessionStart: base routing ON. LiteLLM is not the backend yet."""
+    state = load_router_state()
+    state["mode"] = "router"
+    state["mandatory"] = True
+    state["backend"] = detect_host()
+    save_router_state(state)
+    return state
 
 
 def save_router_state(state: Dict) -> None:
@@ -364,24 +438,45 @@ def main():
     parser.add_argument("--enable", action="store_true", help="Turn router mode ON (delegation directives active)")
     parser.add_argument("--disable", action="store_true", help="Turn router mode OFF (session default model only)")
     parser.add_argument("--status", action="store_true", help="Show router mode and state")
+    parser.add_argument(
+        "--session-start",
+        action="store_true",
+        help="Arm base routing (mandatory ON for this session). Called from SessionStart.",
+    )
 
     args = parser.parse_args()
 
     # Mode toggles — used by the /router skill, not the hook
-    if args.enable or args.disable or args.status:
+    if args.session_start or args.enable or args.disable or args.status:
+        if args.session_start:
+            state = arm_base_router()
+            host = state.get("backend") or detect_host()
+            rec = _load_model_env(host).get("SIMPLE", "")
+            print(
+                "🔀 Raven base router: ON (mandatory this session). "
+                f"host={host} SIMPLE→recommend {rec} if self-contained. "
+                "applied=false until this IDE swaps (LiteLLM not wired). "
+                "/router off opts out until the next SessionStart."
+            )
+            return 0
         state = load_router_state()
         if args.enable:
             state["mode"] = "router"
+            state["mandatory"] = True
             save_router_state(state)
-            print("🔀 Raven router: ON — SIMPLE prompts will carry a delegation "
-                  "directive (Haiku subagent via Agent tool). The primary session "
-                  "model is unchanged — Claude Code has no per-turn model swap.")
+            print("🔀 Raven router: ON — SIMPLE must use a Haiku subagent when "
+                  "self-contained. Primary /model is unchanged (no per-turn swap).")
         elif args.disable:
             state["mode"] = "default"
+            state["mandatory"] = False
             save_router_state(state)
-            print("Raven router: OFF — all prompts run on the session's default model.")
+            print("Raven router: OFF this session — SessionStart will turn it ON again.")
         else:
-            print(json.dumps(load_router_state(), indent=2))
+            st = load_router_state()
+            host = detect_host()
+            st["host"] = host
+            st["tiers"] = _load_model_env(host)
+            print(json.dumps(st, indent=2))
         return 0
 
     # Hook / miswired-hook recovery: read prompt + session_id from Claude Code
@@ -431,6 +526,51 @@ def main():
 
     # Classify
     tier, score, reasons, model = classify(args.prompt, args.context)
+    try:
+        _cc_dir = Path(__file__).resolve().parents[1] / "session"
+        if str(_cc_dir) not in sys.path:
+            sys.path.insert(0, str(_cc_dir))
+        from cost_calc import append_turn_log, estimate, running_total_usd, repo_name
+        est = estimate(model, len(args.prompt or ""))
+        stamp = Path(os.environ.get("CLAUDE_PROJECT_DIR") or Path.cwd()) / ".raven" / ".route-stamp"
+        try:
+            stamp.parent.mkdir(parents=True, exist_ok=True)
+            stamp.write_text(datetime.utcnow().isoformat() + "Z\n", encoding="utf-8")
+        except OSError:
+            pass
+        obs_url, obs_run, redteam = "", "", ""
+        try:
+            sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "dashboard"))
+            from dash_settings import load as _set_load, obs_link
+            st = _set_load()
+            obs_url = obs_link()
+            if st.get("langsmith_enabled"):
+                obs_run = hashlib.sha256((args.prompt or "").encode()).hexdigest()[:16]
+            if st.get("airtaas_enabled") and any(
+                "security" in (x or "") or "auth" in (x or "") for x in (reasons or [])
+            ):
+                redteam = "airtaas"
+        except Exception:
+            pass
+        append_turn_log({
+            "ts": datetime.utcnow().isoformat() + "Z",
+            "repo": repo_name(),
+            "ide": detect_host(),
+            "host": detect_host(),
+            "tier": tier,
+            "recommend": model,
+            "applied": False,
+            "est_cost_usd": est.get("est_cost_usd"),
+            "total_cost_usd": running_total_usd(),
+            "needs_rate": est.get("needs_rate"),
+            "prompt_chars": len(args.prompt or ""),
+            "why": (reasons or [])[:3],
+            "obs_url": obs_url,
+            "obs_run_id": obs_run,
+            "redteam": redteam,
+        })
+    except Exception:
+        pass
 
     # Persist the classification in hook mode too — the cost log's pre-turn
     # estimate column reads last_classification from .model-session.json, so
@@ -444,14 +584,10 @@ def main():
         # Hook mode: one-line toaster the user actually sees + context for the
         # model. Raven never routes silently.
         #
-        # IMPORTANT PLATFORM CONSTRAINT: this hook cannot swap the primary
-        # session model — Claude Code has no per-turn model override. SIMPLE
-        # tier is instead surfaced as a DELEGATION directive: Claude should
-        # consider answering via a Haiku subagent (Agent tool) rather than
-        # inline, when the question is self-contained (no dependency on prior
-        # conversation turns, no file reads/tool calls needed). This is
-        # advisory, not enforced — Claude may still answer directly if
-        # delegating would lose necessary context.
+        # Claude Code cannot swap the primary session model. Base routing is
+        # still mandatory: SessionStart arms the router; SIMPLE must spawn a
+        # Haiku Agent when the prompt is self-contained. Context-bound
+        # questions stay on the session model. LiteLLM is not wired yet.
         state = load_router_state()
         router_on = state.get("mode") == "router"
 
@@ -460,58 +596,38 @@ def main():
         # which model the session runs on (Claude Code doesn't expose it here)
         # — but Claude knows its own model, so the disclosure is delegated to
         # Claude via additionalContext.
-        if hook_session_id and hook_session_id != state.get("session_id"):
+        first = bool(hook_session_id and hook_session_id != state.get("session_id"))
+        if first:
             state["session_id"] = hook_session_id
             state["announced"] = True
             save_router_state(state)
-            mode_word = "ON" if router_on else "OFF"
-            print(json.dumps({
-                "systemMessage": f"🪶 Raven · model disclosure due — router is {mode_word}",
-                "hookSpecificOutput": {
-                    "hookEventName": "UserPromptSubmit",
-                    "additionalContext": (
-                        "[RAVEN MODEL DISCLOSURE — first prompt of this session] "
-                        "Before answering, tell the user in 2-3 sentences: "
-                        "(1) which model this session is running on (state your own model name — the session default set via /model); "
-                        f"(2) Raven's model router is currently {mode_word}. When ON, prompts classified as simple carry an advisory directive to delegate to a cheaper Haiku subagent via the Agent tool — the primary session model NEVER changes (Claude Code has no per-turn model swap; do not claim otherwise); "
-                        "(3) they can say /router to enable it, /router off to disable, /router status to check. "
-                        "Then answer their prompt normally."
-                    ),
-                },
-            }))
-            return 0
 
-        # Router OFF (default): stay silent — no toast, no delegation nudges.
-        # The one exception is the secrets guard: LOCAL_ONLY still warns,
-        # because that's a security signal, not a routing preference.
         if not router_on and tier != "LOCAL_ONLY":
             return 0
 
-        if tier == "LOCAL_ONLY":
-            toast = "🔒 Raven router · secrets detected → LOCAL_ONLY · cloud subagents blocked, local model only"
-        elif tier == "SIMPLE":
-            toast = f"🔀 Raven router · SIMPLE → consider delegating to {model} (Agent tool) instead of answering inline"
-        else:
-            why = ", ".join(r.split(":", 1)[0] for r in reasons[:2]) or "no strong signals"
-            toast = f"🔀 Raven router · {tier} → {model} · {why}"
+        toast = format_turn_toast(tier, model, reasons, prompt_chars=len(args.prompt or ""))
+        if first:
+            toast = "🪶 Base router ON this session. " + toast
 
         if tier == "SIMPLE":
+            host = detect_host()
             delegation_note = (
-                f"RAVEN_MODEL_TIER=SIMPLE. This question scored as simple/factual. "
-                f"Consider delegating it to a Haiku subagent via the Agent tool "
-                f"(model: haiku) instead of answering inline, IF AND ONLY IF the "
-                f"question is fully self-contained — no dependency on prior "
-                f"conversation context, no file reads, no tool calls needed. "
-                f"If it depends on this conversation's context or requires tools, "
-                f"answer directly as normal; delegation is advisory, not forced."
+                f"RAVEN_MODEL_TIER=SIMPLE host={host} recommend={model} applied=false. "
+                f"Your first written lines MUST be Intent: plan|debug|direct and session=<your model>. "
+                f"The UserPromptSubmit toaster is not enough. git/status/log is not an exemption. "
+                f"If self-contained, spawn a subagent on {model}. If context-bound, stay on session "
+                f"and say why in one line. Never claim model_for_tier is what you ran."
             )
         else:
+            host = detect_host()
             delegation_note = (
-                f"RAVEN_MODEL_TIER={tier}. Subagents spawned this turn should "
-                f"use tier {tier} ({model}). "
+                f"RAVEN_MODEL_TIER={tier} host={host} recommend={model} applied=false. "
+                f"Your first written lines MUST be Intent: plan|debug|direct and session=<your model>. "
+                f"The toaster is not a skip. git/status is not outside the router. "
+                f"You are still the session model. Recommend {model} for subagents. "
+                f"Do not say you are anthropic/claude-* unless host=claude. "
                 + ("SECRETS DETECTED: do NOT spawn cloud agents; local model only."
-                   if tier == "LOCAL_ONLY" else
-                   "Use this tier's model when spawning subagents.")
+                   if tier == "LOCAL_ONLY" else "")
             )
 
         print(json.dumps({
@@ -525,13 +641,31 @@ def main():
         }))
         return 0
 
-    print(json.dumps({
-        "tier": tier,
-        "score": score,
-        "reasons": reasons,
-        "model": model,
-        "source": args.source,
-    }, indent=2))
+    toast = format_turn_toast(tier, model, reasons, prompt_chars=len(args.prompt or ""))
+    if "--json" in sys.argv:
+        print(json.dumps({
+            "tier": tier,
+            "score": score,
+            "reasons": reasons,
+            "model": model,
+            "recommended_model": model,
+            "host": detect_host(),
+            "applied": False,
+            "source": args.source,
+            "toast": toast,
+        }, indent=2))
+    else:
+        print(toast)
+        print(json.dumps({
+            "tier": tier,
+            "score": score,
+            "reasons": reasons,
+            "model": model,
+            "recommended_model": model,
+            "host": detect_host(),
+            "applied": False,
+            "source": args.source,
+        }, indent=2))
 
     return 0
 

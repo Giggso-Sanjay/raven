@@ -51,49 +51,34 @@ def write_checkpoint(session_id: str, last_line_index: int) -> None:
 
 
 def load_pricing() -> Dict[str, Dict[str, float]]:
-    """Load model pricing from config file."""
+    """Shipped + local rates via cost_calc (no silent gpt-4o fallback)."""
     try:
-        if PRICING_FILE.exists():
-            return json.loads(PRICING_FILE.read_text())["models"]
+        sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
+        from cost_calc import load_table
+        return load_table()
     except Exception as e:
         sys.stderr.write(f"Warning: Failed to load pricing config: {e}\n")
     return {}
 
 
-def get_cost(model: str, tokens_in: int, tokens_out: int, pricing: Dict) -> float:
-    """Calculate cost in USD for a model + token counts."""
-    model_price = pricing.get(model, pricing.get("gpt-4o", {}))
-    if not model_price:
-        model_price = pricing.get("default", {"input_per_1m": 1, "output_per_1m": 5})
-
-    in_cost = (tokens_in / 1_000_000) * model_price.get("input_per_1m", 1)
-    out_cost = (tokens_out / 1_000_000) * model_price.get("output_per_1m", 5)
-    return round(in_cost + out_cost, 6)
-
-
-def is_raven_code(tool_uses: list, skill_uses: list) -> bool:
-    """Detect if a message is from Raven infrastructure vs user work."""
-    # Check tool_uses for raven-related paths/commands
-    for tool in tool_uses:
-        if isinstance(tool, dict):
-            # Check if bash command references raven
-            if "bash" in str(tool).lower():
-                cmd = tool.get("input", {}).get("command", "")
-                if any(x in cmd for x in [".raven/", "raven-", ".claude/scripts/"]):
-                    return True
-            # Check file paths
-            path = tool.get("input", {}).get("path", "")
-            if any(x in path for x in [".raven/", ".claude/scripts/"]):
-                return True
-
-    # Check skill_uses for raven skills
-    for skill in skill_uses:
-        if isinstance(skill, dict):
-            name = skill.get("name", "")
-            if name.startswith("raven-") or "raven" in name.lower():
-                return True
-
-    return False
+def get_cost(model: str, tokens_in: int, tokens_out: int, pricing: Dict = None) -> float:
+    """USD from cost_calc. 0.0 if rates missing (row recorded, not guessed)."""
+    try:
+        sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
+        from cost_calc import get_cost as _cc
+        usd = _cc(model, tokens_in, tokens_out)
+        if usd is not None:
+            return usd
+    except Exception:
+        pass
+    if pricing:
+        key = (model or "").split("/")[-1]
+        model_price = pricing.get(model) or pricing.get(key) or {}
+        inn = model_price.get("input_per_1m")
+        out = model_price.get("output_per_1m")
+        if inn is not None and out is not None:
+            return round((tokens_in / 1_000_000) * float(inn) + (tokens_out / 1_000_000) * float(out), 6)
+    return 0.0
 
 
 def parse_transcript(transcript_path: str) -> Dict[str, Any]:
@@ -180,12 +165,17 @@ def parse_transcript(transcript_path: str) -> Dict[str, Any]:
                         cache_read = usage.get("cache_read_input_tokens", 0)
                         cache_creation = usage.get("cache_creation_input_tokens", 0)
 
-                        # Categorize
-                        is_raven = is_raven_code(
-                            msg.get("message", {}).get("tool_uses", []),
-                            msg.get("message", {}).get("skill_uses", []),
-                        )
-                        bucket = metrics["raven_code"] if is_raven else metrics["user_work"]
+                        # Every transcript-derived turn is real conversation cost —
+                        # attribute to user_work unconditionally. is_raven_code()'s
+                        # path-substring heuristic (".raven/", "raven-") misfires on
+                        # any project literally named "raven": nearly every tool call
+                        # in this repo legitimately touches a raven-prefixed path, so
+                        # it classified ~100% of real work as overhead. Raven's actual
+                        # internal overhead (router/classifier calls) is tracked
+                        # separately and correctly via model-router.py's explicit
+                        # --source raven_overhead writes — those aren't part of this
+                        # transcript at all, so no heuristic split is needed here.
+                        bucket = metrics["user_work"]
 
                         # Update totals
                         bucket["calls"] += 1
@@ -273,12 +263,9 @@ def write_session_json(metrics: Dict[str, Any]) -> bool:
             "last_classification": None,
         })
 
-        # Fold this transcript pass's raven_code totals into raven_overhead
-        # (transcript-detected Raven-infra calls are overhead too).
-        rc = metrics["raven_code"]
-        overhead["tokens"] = overhead.get("tokens", 0) + rc["tokens"]
-        overhead["cost_usd"] = overhead.get("cost_usd", 0.0) + rc["cost_usd"]
-        overhead["calls"] = overhead.get("calls", 0) + rc["calls"]
+        # raven_overhead is populated separately by model-router.py's explicit
+        # --source raven_overhead calls (its own classifier subprocess, not
+        # part of this transcript). Nothing from the transcript folds in here.
         overhead.setdefault("by_source", {})
 
         # Accumulate real transcript-derived usage into user_work — additive,
@@ -461,8 +448,17 @@ def write_audit_log(metrics: Dict[str, Any]) -> bool:
         ts = datetime.fromisoformat(metrics["timestamp"].replace("Z", "+00:00"))
         log_file = AUDIT_DIR / f"{ts.strftime('%Y-%m-%d')}.log"
 
+        try:
+            from cost_calc import detect_ide as _ide2, repo_name as _repo2
+            _ide_a = _ide2()
+            _repo_a = _repo2()
+        except Exception:
+            _ide_a = "unknown"
+            _repo_a = metrics.get("project") or "unknown"
         entry = {
             "timestamp": metrics["timestamp"],
+            "repo": _repo_a,
+            "ide": _ide_a,
             "session_id": metrics.get("session_id", ""),
             "model": metrics.get("model", "unknown"),
             "tokens": metrics["total"].get("tokens", 0),
@@ -497,14 +493,10 @@ def _read_estimate() -> Optional[Dict[str, Any]]:
         prompt_chars = lc.get("prompt_chars")
         if not model_str or prompt_chars is None:
             return None
-        model = model_str.split("/", 1)[-1]
-        pricing = load_pricing()
-        est_in = prompt_chars / 4
-        est_out = 500
         return {
             "tier": lc.get("tier"),
             "model": model_str,
-            "est_cost_usd": get_cost(model, int(est_in), est_out, pricing),
+            "est_cost_usd": lc.get("est_cost_usd"),
         }
     except Exception:
         return None
@@ -555,9 +547,18 @@ def write_cost_log(metrics: Dict[str, Any]) -> bool:
         for model, pm in by_model.items():
             cum_session += pm["cost_usd"]
             cum_month += pm["cost_usd"]
+            try:
+                from cost_calc import detect_ide as _ide, repo_name as _repo
+                _ide_name = _ide()
+                _repo_name = _repo()
+            except Exception:
+                _ide_name = "unknown"
+                _repo_name = metrics.get("project") or "unknown"
             rows.append({
                 "ts": metrics["timestamp"],
                 "session_id": session_id,
+                "repo": _repo_name,
+                "ide": _ide_name,
                 "model": model,
                 "source": "primary" if model == primary_model else "subagent",
                 "tokens_in": pm["tokens_in"],
@@ -568,12 +569,30 @@ def write_cost_log(metrics: Dict[str, Any]) -> bool:
                 "est_tier": (estimate or {}).get("tier"),
                 "computed_cost_usd": round(pm["cost_usd"], 6),
                 "cum_session_usd": round(cum_session, 6),
+                "total_cost_usd": round(cum_session, 6),
                 "cum_month_usd": round(cum_month, 6),
             })
 
         with open(COST_LOG, "a") as f:
             for row in rows:
                 f.write(json.dumps(row) + "\n")
+        turn_usd = sum(float(r.get("computed_cost_usd") or 0) for r in rows)
+        tin = sum(int(r.get("tokens_in") or 0) for r in rows)
+        tout = sum(int(r.get("tokens_out") or 0) for r in rows)
+        try:
+            sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
+            from cost_calc import write_turn_end, end_money_line
+            rec = write_turn_end(
+                turn_usd=round(turn_usd, 6),
+                running_total=cum_session,
+                model=primary_model,
+                tokens_in=tin,
+                tokens_out=tout,
+                session_id=session_id,
+            )
+            print(end_money_line(rec), file=sys.stderr)
+        except Exception as e:
+            sys.stderr.write(f"Warning: turn-end cost line failed: {e}\n")
         return True
     except Exception as e:
         sys.stderr.write(f"Warning: Failed to write cost log: {e}\n")

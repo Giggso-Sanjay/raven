@@ -36,6 +36,9 @@ HTML_PATH = TREES_DIR / (REPO.name + ".html")
 
 HISTORY_CAP = 5
 SESSIONS_CAP = 10
+COMMIT_CAP = 20
+SYMBOL_DIFF_COMMITS = 5
+OKF_SCHEMA = 1
 SKIP_DIRS = {".git", "__pycache__", "node_modules", ".venv", "venv", ".raven", "dist", "build"}
 SOURCE_EXT = {".py", ".js", ".ts", ".sh", ".md", ".yaml", ".yml", ".json", ".html", ".css"}
 CONV_RX = re.compile(r"^(feat|fix|docs|refactor|test|chore|perf|style|ci|build)\(?([^):]*)\)?:\s*(.+)$")
@@ -161,6 +164,245 @@ def _tracked_files() -> list[str]:
     return files
 
 
+def _py_symbols(rel: str) -> list[dict]:
+    path = REPO / rel
+    if path.suffix != ".py":
+        return []
+    try:
+        tree = ast.parse(path.read_text(errors="replace"))
+    except (OSError, SyntaxError):
+        return []
+    out = []
+    for n in tree.body:
+        if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+            kind = "class" if isinstance(n, ast.ClassDef) else "function"
+            out.append({"id": f"sym:{rel}:{n.name}", "name": n.name, "kind": kind,
+                        "file": rel, "line": getattr(n, "lineno", 1)})
+    return out
+
+
+def _commits(limit: int = COMMIT_CAP) -> list[dict]:
+    raw = _run(["git", "log", f"-{limit}", "--format=%H|%h|%as|%s"])
+    rows = []
+    for line in raw.splitlines():
+        parts = line.split("|", 3)
+        if len(parts) < 4:
+            continue
+        full, short, date, subj = parts
+        files = [f for f in _run(["git", "diff-tree", "--no-commit-id", "--name-only", "-r", full]).splitlines() if f]
+        rows.append({"id": f"commit:{short}", "sha": full, "short": short, "date": date,
+                     "subject": subj[:200], "files": files})
+    return rows
+
+
+def _symbol_names_at(rel: str, rev: str) -> set[str]:
+    raw = _run(["git", "show", f"{rev}:{rel}"])
+    if not raw or not rel.endswith(".py"):
+        return set()
+    try:
+        tree = ast.parse(raw)
+    except SyntaxError:
+        return set()
+    names = set()
+    for n in tree.body:
+        if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+            names.add(n.name)
+    return names
+
+
+def build_okf(file_nodes: dict[str, dict]) -> dict:
+    nodes: list[dict] = [{"id": f"project:{REPO.name}", "type": "project", "label": REPO.name}]
+    edges: list[dict] = []
+    for rel, fn in file_nodes.items():
+        nodes.append({
+            "id": f"file:{rel}", "type": "file", "label": rel, "role": fn.get("role", ""),
+            "purpose": fn.get("purpose", ""), "churn_30d": fn.get("churn_30d", 0),
+            "history": fn.get("history") or [],
+        })
+        edges.append({"from": f"project:{REPO.name}", "to": f"file:{rel}", "type": "contains", "tag": "EXTRACTED"})
+        for imp in fn.get("imports") or []:
+            # local import is module stem; match files
+            for other in file_nodes:
+                if pathlib.Path(other).stem == imp and other != rel:
+                    edges.append({"from": f"file:{rel}", "to": f"file:{other}", "type": "imports", "tag": "EXTRACTED"})
+        for sym in _py_symbols(rel):
+            nodes.append({**sym, "type": "symbol", "label": f"{sym['name']} ({sym['kind']})"})
+            edges.append({"from": f"file:{rel}", "to": sym["id"], "type": "defines", "tag": "EXTRACTED"})
+    node_ids = {n["id"] for n in nodes}
+    for i, c in enumerate(_commits()):
+        nodes.append({
+            "id": c["id"], "type": "commit", "label": c["short"], "sha": c["sha"],
+            "date": c["date"], "subject": c["subject"], "files": c["files"],
+            "summary": f"{c['short']} {c['date']} — {c['subject']}",
+        })
+        parent = _run(["git", "rev-parse", f"{c['sha']}^"]) or ""
+        do_syms = i < SYMBOL_DIFF_COMMITS
+        for rel in c["files"]:
+            if f"file:{rel}" in node_ids:
+                edges.append({"from": c["id"], "to": f"file:{rel}", "type": "touches", "tag": "EXTRACTED"})
+            if do_syms and rel.endswith(".py") and parent:
+                before = _symbol_names_at(rel, parent)
+                after = _symbol_names_at(rel, c["sha"])
+                for name in sorted(after.symmetric_difference(before)):
+                    sid = f"sym:{rel}:{name}"
+                    if sid in node_ids:
+                        edges.append({"from": c["id"], "to": sid, "type": "changes_symbol", "tag": "EXTRACTED"})
+    head = _run(["git", "rev-parse", "--short", "HEAD"])
+    return {"schema": OKF_SCHEMA, "git_head": head, "nodes": nodes, "edges": edges}
+
+
+def _okf(payload: dict | None = None) -> dict:
+    t = payload or _load() or {}
+    okf = t.get("okf")
+    if okf and okf.get("nodes"):
+        return okf
+    return {"schema": OKF_SCHEMA, "git_head": "", "nodes": [], "edges": []}
+
+
+EDGE_TYPES = {"touches", "imports", "defines", "changes_symbol", "contains"}
+
+
+def resolve_commit_ref(ref: str) -> str:
+    """HEAD / @ / full SHA → short SHA used on commit: nodes."""
+    if not ref:
+        return ""
+    key = ref.strip()
+    if key.upper() in ("HEAD", "@"):
+        return _run(["git", "rev-parse", "--short", "HEAD"]) or key
+    if len(key) >= 7 and all(c in "0123456789abcdef" for c in key.lower()):
+        short = _run(["git", "rev-parse", "--short", key])
+        return short or key[:7]
+    return key
+
+
+def query_graph(okf: dict, **filt) -> list[dict]:
+    ntype = (filt.get("type") or "").strip()
+    glob = (filt.get("path_glob") or "").strip()
+    commit = (filt.get("commit") or "").strip()
+    if ntype in EDGE_TYPES:
+        src = None
+        if commit:
+            src = get_node(okf, commit)
+        hits = []
+        for e in okf.get("edges") or []:
+            if e.get("type") != ntype:
+                continue
+            if e.get("tag") and e.get("tag") != "EXTRACTED":
+                continue
+            if src and e.get("from") != src["id"] and e.get("to") != src["id"]:
+                continue
+            hits.append(e)
+        return hits[:80]
+    out = []
+    for n in okf.get("nodes") or []:
+        if ntype and n.get("type") != ntype:
+            continue
+        if glob and glob not in (n.get("label") or n.get("id") or ""):
+            continue
+        out.append(n)
+    return out[:80]
+
+
+def get_node(okf: dict, nid: str) -> dict | None:
+    if not nid:
+        return None
+    resolved = resolve_commit_ref(nid) if nid.upper() in ("HEAD", "@") or len(nid) >= 7 else nid
+    keys = {nid, resolved, f"commit:{nid}", f"commit:{resolved}", f"file:{nid}"}
+    for n in okf.get("nodes") or []:
+        if n.get("id") in keys or n.get("label") == nid or n.get("short") in keys:
+            return n
+        sha = n.get("sha") or ""
+        short = n.get("short") or ""
+        if n.get("type") == "commit" and short and (
+            nid.startswith(short) or short.startswith(nid) or (sha and sha.startswith(nid))
+        ):
+            return n
+    return None
+
+
+def get_neighbors(okf: dict, nid: str, edge_type: str = "") -> list[dict]:
+    ids = {nid}
+    node = get_node(okf, nid)
+    if node:
+        ids.add(node["id"])
+    hits = []
+    for e in okf.get("edges") or []:
+        if edge_type and e.get("type") != edge_type:
+            continue
+        if e.get("from") in ids or e.get("to") in ids:
+            hits.append(e)
+    return hits[:80]
+
+
+def shortest_path(okf: dict, a: str, b: str) -> list[str]:
+    na, nb = get_node(okf, a), get_node(okf, b)
+    if not na or not nb:
+        return []
+    start, goal = na["id"], nb["id"]
+    adj: dict[str, list[str]] = {}
+    for e in okf.get("edges") or []:
+        adj.setdefault(e["from"], []).append(e["to"])
+        adj.setdefault(e["to"], []).append(e["from"])
+    q = [start]
+    prev = {start: None}
+    while q:
+        cur = q.pop(0)
+        if cur == goal:
+            break
+        for nxt in adj.get(cur, []):
+            if nxt not in prev:
+                prev[nxt] = cur
+                q.append(nxt)
+    if goal not in prev:
+        return []
+    path = []
+    cur = goal
+    while cur is not None:
+        path.append(cur)
+        cur = prev[cur]
+    path.reverse()
+    return path
+
+
+def commit_impact(okf: dict, sha: str) -> dict:
+    node = get_node(okf, sha)
+    if not node:
+        return {"error": "commit not in OKF", "sha": resolve_commit_ref(sha) or sha}
+    neigh = get_neighbors(okf, node["id"])
+    files = [e["to"] for e in neigh if e["type"] == "touches"]
+    syms = [e["to"] for e in neigh if e["type"] == "changes_symbol"]
+    return {"commit": node, "files": files, "symbols": syms, "summary": node.get("summary", "")}
+
+
+def find_gaps(okf: dict) -> list[dict]:
+    gaps = []
+    defined = {n["id"] for n in okf.get("nodes") or [] if n.get("type") == "symbol"}
+    imported_files = {e["to"] for e in okf.get("edges") or [] if e.get("type") == "imports"}
+    for n in okf.get("nodes") or []:
+        if n.get("type") == "file" and str(n.get("label", "")).endswith(".py") and not n.get("purpose"):
+            gaps.append({"kind": "no_purpose", "id": n["id"], "detail": n.get("label")})
+        if n.get("type") == "file" and n.get("churn_30d", 0) and n["id"] not in imported_files and n.get("role") not in ("entrypoint",):
+            if n.get("label", "").endswith(".py") and "/scripts/" not in str(n.get("label")):
+                pass  # too noisy; skip generic
+    # commits that touch two files with no imports edge
+    file_ids = {n["id"] for n in okf.get("nodes") or [] if n.get("type") == "file"}
+    import_pairs = {(e["from"], e["to"]) for e in okf.get("edges") or [] if e.get("type") == "imports"}
+    for n in okf.get("nodes") or []:
+        if n.get("type") != "commit":
+            continue
+        files = [f"file:{f}" for f in (n.get("files") or []) if f"file:{f}" in file_ids]
+        if len(files) < 2:
+            continue
+        linked = False
+        for i, a in enumerate(files):
+            for b in files[i + 1 :]:
+                if (a, b) in import_pairs or (b, a) in import_pairs:
+                    linked = True
+        if not linked and len(files) >= 2:
+            gaps.append({"kind": "commit_unlinked_modules", "id": n["id"], "detail": n.get("subject", "")[:80]})
+    return gaps[:40]
+
+
 def _file_node(rel: str, hook_roles: dict, churn: dict) -> dict:
     purpose, funcs, imports = _purpose(REPO / rel)
     return {
@@ -212,7 +454,12 @@ def _load() -> dict | None:
         return None
 
 
-def build() -> dict:
+def build(*, if_stale: int = 0) -> dict:
+    if if_stale:
+        old = _load()
+        head = _run(["git", "rev-parse", "--short", "HEAD"])
+        if old and (old.get("okf") or {}).get("git_head") == head:
+            return old
     hook_roles = _hook_roles()
     churn = _churn_30d()
     file_nodes = {rel: _file_node(rel, hook_roles, churn) for rel in _tracked_files()}
@@ -221,6 +468,7 @@ def build() -> dict:
         "generated_at": datetime.datetime.now().strftime("%Y-%m-%dT%H:%M:%S"),
         "repo": REPO.name,
         "root": _to_tree(file_nodes),
+        "okf": build_okf(file_nodes),
     }
     _atomic_write(payload)
     return payload
@@ -257,7 +505,9 @@ def delta(files: list[str], session: str | None, commit: str | None) -> int:
             node["sessions"] = (node["sessions"] + [session])[-SESSIONS_CAP:]
         rebuilt_nodes[rel] = node
         touched += 1
-    tree["root"] = _to_tree({k: v for k, v in rebuilt_nodes.items() if not v.get("deleted")})
+    live = {k: v for k, v in rebuilt_nodes.items() if not v.get("deleted")}
+    tree["root"] = _to_tree(live)
+    tree["okf"] = build_okf(live)
     tree["generated_at"] = datetime.datetime.now().strftime("%Y-%m-%dT%H:%M:%S")
     _atomic_write(tree)
     return touched
@@ -295,236 +545,176 @@ def digest(for_prompt: str | None = None) -> str:
     return text[:6000]  # ~1500 tokens hard cap
 
 
+def repo_summary() -> str:
+    """First meaningful paragraph from README — what this repo is."""
+    for name in ("README.md", "readme.md"):
+        p = REPO / name
+        if not p.is_file():
+            continue
+        try:
+            text = p.read_text(errors="replace")
+        except OSError:
+            continue
+        for line in text.splitlines():
+            s = line.strip()
+            if s.startswith("**") and s.endswith("**") and len(s) > 40:
+                return s.strip("* ")[:400]
+            if s.startswith("#"):
+                continue
+            if s.startswith("<"):
+                continue
+            if len(s) > 80:
+                return s[:400]
+    return ""
+
+
+VIEWER_DIR = pathlib.Path(__file__).resolve().parent
+OKF_JSON_RX = re.compile(
+    r'<script[^>]*id=["\']okf["\'][^>]*>(.*?)</script>',
+    re.I | re.S,
+)
+
+
+def enrich_nodes(nodes: list) -> list:
+    out = list(nodes or [])
+    try:
+        from icons import data_uri as icon_data_uri, emoji_for, resolve_icon_key
+        for n in out:
+            key = resolve_icon_key(
+                ntype=n.get("type") or "",
+                label=n.get("label") or "",
+                node_id=n.get("id") or "",
+                path=n.get("label") or "",
+            )
+            n["icon"] = key
+            n["icon_uri"] = icon_data_uri(key)
+            n["icon_emoji"] = emoji_for(key)
+    except Exception:
+        for n in out:
+            n.setdefault("icon", "code")
+            n.setdefault("icon_emoji", "💻")
+    return out
+
+
+def publish_viewer() -> pathlib.Path:
+    dest = VAULT / "dashboard"
+    dest.mkdir(parents=True, exist_ok=True)
+    TREES_DIR.mkdir(parents=True, exist_ok=True)
+    for name in ("okf-viewer.js", "okf-viewer.css"):
+        src = VIEWER_DIR / name
+        if src.is_file():
+            text = src.read_text(encoding="utf-8")
+            (dest / name).write_text(text, encoding="utf-8")
+            (TREES_DIR / name).write_text(text, encoding="utf-8")
+    return dest
+
+
+def stub_html(payload: dict) -> str:
+    data = json.dumps(payload).replace("<", "\\u003c")
+    repo_title = html.escape(str(payload.get("repo") or "repo"))
+    return f"""<!DOCTYPE html>
+<html><head><meta charset="utf-8"><title>{repo_title} — code graph</title>
+<link rel="stylesheet" href="okf-viewer.css">
+</head><body>
+<div id="banner">
+  <h1 id="title">{repo_title}</h1>
+  <div class="sum" id="sum"></div>
+  <div class="meta">EXTRACTED graph · <span id="head"></span> ·
+    <span class="dot" style="background:#38bdf8"></span>file
+    <span class="dot" style="background:#a78bfa"></span>commit
+    · click a node · not the old folder tree
+  </div>
+  <div><button class="on" id="bboth" onclick="setGraphMode('both')">Graph</button>
+       <button id="bfile" onclick="setGraphMode('file')">Files</button>
+       <button id="bcommit" onclick="setGraphMode('commit')">Commits</button></div>
+</div>
+<div id="row">
+  <svg id="canvas" xmlns="http://www.w3.org/2000/svg"></svg>
+  <div id="side"><div class="meta">Click a node for summary</div><pre id="out"></pre></div>
+</div>
+<script type="application/json" id="okf">{data}</script>
+<script src="okf-viewer.js"></script>
+</body></html>
+"""
+
+
+def extract_okf_payload(text: str) -> dict | None:
+    m = OKF_JSON_RX.search(text or "")
+    if not m:
+        return None
+    try:
+        return json.loads(m.group(1))
+    except json.JSONDecodeError:
+        return None
+
+
+def rebake_tree_htmls() -> int:
+    """Rewrite every trees/*.html as a stub that loads the shared viewer.
+
+    Keeps each repo's OKF JSON. Does not re-run git. One viewer update
+    applies to Aryx, Rex, … the next time this function runs.
+    """
+    publish_viewer()
+    trees = TREES_DIR
+    if not trees.is_dir():
+        return 0
+    n = 0
+    for path in trees.glob("*.html"):
+        if not re.match(r"^[A-Za-z0-9._-]+$", path.stem):
+            continue
+        try:
+            raw = path.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            continue
+        payload = extract_okf_payload(raw)
+        if not payload:
+            continue
+        payload["nodes"] = enrich_nodes(payload.get("nodes") or [])
+        if not payload.get("repo"):
+            payload["repo"] = path.stem
+        path.write_text(stub_html(payload), encoding="utf-8")
+        n += 1
+    return n
+
+
 def render_html(open_after: bool = False) -> pathlib.Path:
+    """Graphify-style node/edge canvas + repo summary. Not a folder tree."""
     tree = _load() or build()
-
-    def node_html(n: dict, depth: int = 0) -> str:
-        if n.get("type") in ("project", "module"):
-            kids = "".join(node_html(c, depth + 1) for c in sorted(
-                n.get("children", []), key=lambda c: (c.get("type") == "program", c["id"])))
-            label = html.escape(n["id"].split("/")[-1] or n["id"])
-            return (f"<details {'open' if depth < 2 else ''}><summary class='mod'>📁 {label}</summary>"
-                    f"<div class='kids'>{kids}</div></details>")
-        role = n.get("role", "")
-        color = ROLE_COLORS.get(role.split(":")[0], ROLE_COLORS[""])
-        churn = n.get("churn_30d", 0)
-        badge = f"<span class='churn'>×{churn}</span>" if churn else ""
-        warn = "" if n.get("purpose") or not n["id"].endswith(".py") else "<span class='warn'>⚠ no purpose</span>"
-        why = html.escape(n["history"][0]["why"]) if n.get("history") else ""
-        kind = n["history"][0]["kind"] if n.get("history") else ""
-        hist = "".join(
-            f"<li><code>{h['commit']}</code> <b>{html.escape(h['kind'])}</b>"
-            f"{('(' + html.escape(h['scope']) + ')') if h['scope'] else ''}: "
-            f"{html.escape(h['why'])} <span class='dim'>{h['date']}</span></li>"
-            for h in n.get("history", []))
-        sess = ", ".join(html.escape(s) for s in n.get("sessions", [])) or "—"
-        imps = ", ".join(html.escape(i) for i in n.get("imports", [])) or "—"
-        ses_attr = " ".join(html.escape(s) for s in n.get("sessions", []))
-        abs_path = html.escape(str(REPO / n['id']))
-        return (
-            f"<details class='prog' id='f-{html.escape(n['id']).replace('/', '--').replace('.', '_')}' data-sessions='{ses_attr}'>"
-            f"<summary><span class='chip' style='background:{color}'>{html.escape(role or 'file')}</span> "
-            f"<b>{html.escape(pathlib.Path(n['id']).name)}</b> {badge}{warn}"
-            f"<span class='purpose'>{html.escape(n.get('purpose') or '')}</span>"
-            f"{('<span class=why>' + html.escape(kind) + ': ' + why + '</span>') if why else ''}"
-            f"</summary><div class='panel'>"
-            f"<p><b>Path:</b> <code>{html.escape(n['id'])}</code> · "
-            f"<a class='openIDE' data-path='{abs_path}' style='color:#4a90d9' href='#'>Open in editor ↗</a></p>"
-            f"<p><b>Imports:</b> {imps}</p><p><b>Sessions:</b> {sess}</p>"
-            f"<b>History:</b><ul>{hist or '<li>—</li>'}</ul></div></details>")
-
-    def slim(n: dict) -> dict:
-        out = {"id": n["id"].split("/")[-1] or n["id"], "path": n["id"],
-               "role": (n.get("role") or "").split(":")[0], "churn": n.get("churn_30d", 0),
-               "purpose": n.get("purpose", ""),
-               "why": (n["history"][0]["kind"] + ": " + n["history"][0]["why"]) if n.get("history") else ""}
-        kids = n.get("children")
-        if kids:
-            out["children"] = [slim(c) for c in sorted(kids, key=lambda c: (c.get("type") == "program", c["id"]))]
-        return out
-
-    graph_json = json.dumps(slim(tree["root"]))
-    # Summary bullets — the "what am I looking at" panel
-    flat_all = dict(_flat_items(tree))
-    n_files = len(flat_all)
-    role_counts: dict[str, int] = {}
-    for n in flat_all.values():
-        r = (n.get("role") or "other").split(":")[0]
-        role_counts[r] = role_counts.get(r, 0) + 1
-    roles_line = " · ".join(f"{k} {v}" for k, v in sorted(role_counts.items(), key=lambda x: -x[1])[:6])
-    hot5 = sorted(flat_all.values(), key=lambda n: -n.get("churn_30d", 0))[:5]
-    hot_lis = "".join(
-        f"<li><code>{html.escape(n['id'])}</code> ×{n['churn_30d']}"
-        f"{(' — ' + html.escape(n['history'][0]['why'])) if n.get('history') else ''}</li>"
-        for n in hot5 if n.get("churn_30d", 0)
-    ) or "<li class='dim'>no churn in the last 30 days</li>"
-    n_no_purpose = sum(1 for n in flat_all.values() if not n.get("purpose") and n["id"].endswith(".py"))
-    summary_html = f"""
-<div style='background:#161b23;border:1px solid #2a3340;border-radius:8px;padding:.9rem 1.1rem;margin:.8rem 0 1rem'>
-<b>Summary</b>
-<ul style='margin:.4rem 0 0 1.2rem;line-height:1.7'>
-<li><b>{n_files}</b> source files · roles: {roles_line}</li>
-<li>Hottest (30-day churn · latest why):<ul style='margin-left:1.2rem'>{hot_lis}</ul></li>
-<li>{'⚠ <b>' + str(n_no_purpose) + '</b> Python file(s) missing a purpose docstring' if n_no_purpose else '✅ every Python file has a purpose docstring'}</li>
-<li class='dim'>Deterministic — AST + git only, no LLM · generated {html.escape(tree['generated_at'])}</li>
-</ul></div>"""
-
-    all_sessions = sorted({s for _, n in _flat_items(tree) for s in n.get("sessions", [])}, reverse=True)
-    opts = "".join(f"<option value='{html.escape(s)}'>{html.escape(s)}</option>" for s in all_sessions)
-    body = node_html(tree["root"])
-    page = f"""<!doctype html><html><head><meta charset="utf-8">
-<title>Raven Code-XRay — {html.escape(tree['repo'])}</title><style>
-:root{{color-scheme:dark}}body{{background:#12161c;color:#e2e8f0;font:14px/1.5 -apple-system,Segoe UI,sans-serif;margin:2rem auto;max-width:960px;padding:0 1rem}}
-h1{{font-size:1.3rem}}summary{{cursor:pointer;padding:.2rem 0}}
-.mod{{font-weight:600;color:#a8b3c0}}.kids{{margin-left:1.2rem;border-left:1px solid #2a3340;padding-left:.8rem}}
-.chip{{color:#0e1116;border-radius:4px;padding:0 .45em;font-size:.72em;font-weight:700}}
-.purpose{{color:#8fa0b3;margin-left:.6em;font-style:italic}}
-.why{{display:block;color:#6b7a8c;margin-left:2.2em;font-size:.85em}}
-.churn{{background:#e0a030;color:#0e1116;border-radius:8px;padding:0 .5em;font-size:.72em;margin-left:.4em;font-weight:700}}
-.warn{{color:#e0a030;font-size:.8em;margin-left:.4em}}
-.panel{{background:#1a212b;border-radius:6px;margin:.4rem 0 .6rem 1.6rem;padding:.6rem .9rem}}
-.dim{{color:#5a6878}}code{{background:#232c38;padding:0 .3em;border-radius:3px}}
-.hl>summary{{background:#243447;border-radius:4px}}
-.flash>summary{{background:#2c4a6e;border-radius:4px;transition:background 1.5s}}
-.toolbar{{margin:1rem 0}}select{{background:#1a212b;color:#e2e8f0;border:1px solid #2a3340;padding:.3em;border-radius:4px}}
-.zb{{background:#1a212b;color:#e2e8f0;border:1px solid #3a4656;border-radius:4px;width:34px;height:28px;cursor:pointer;font-size:14px}}
-.zb:hover{{background:#243447}}.zb:last-child{{width:auto;padding:0 .5em}}
-</style></head><body>
-<h1>🩻 Raven Code-XRay — {html.escape(tree['repo'])}</h1>
-<p class='dim'>Generated {html.escape(tree['generated_at'])} · source: .raven/code-tree.json · deterministic (AST + git, no LLM)
-· <a style='color:#4a90d9' href='../index.html'>← dashboard</a></p>
-{summary_html}
-<div class='toolbar'>Session overlay: <select id='sess' onchange='hl(this.value)'>
-<option value=''>— none —</option>{opts}</select>
-&nbsp;·&nbsp; Editor: <select id='ide' onchange='localStorage.setItem("raven-ide",this.value)'>
-<option value='vscode'>VS Code</option><option value='cursor'>Cursor</option>
-<option value='idea'>IntelliJ IDEA</option><option value='pycharm'>PyCharm</option>
-<option value='subl'>Sublime</option><option value='zed'>Zed</option>
-<option value='finder'>Reveal in Finder</option></select></div>
-<h2 style='font-size:1.05rem'>Graph view <span class='dim' style='font-weight:400'>(scroll = zoom at cursor · drag = pan · click folder = expand/collapse · hover = purpose + why)</span></h2>
-<p style='font-size:.8rem;margin:.2rem 0 .5rem'>
-<span style='color:#38b2ac'>●</span> folder&nbsp;
-<span style='color:#e05252'>●</span> guard&nbsp;
-<span style='color:#e0a030'>●</span> router&nbsp;
-<span style='color:#4a90d9'>●</span> hook&nbsp;
-<span style='color:#9b6dd6'>●</span> skill&nbsp;
-<span style='color:#8a949e'>●</span> script&nbsp;
-<span style='color:#5aa87a'>●</span> doc&nbsp;
-<span style='color:#e0a030'>◯</span> = changed in last 30d (bigger dot = more changes)</p>
-<div id='gwrap' style='overflow:hidden;background:#0e1218;border:1px solid #2a3340;border-radius:8px;margin-bottom:1.5rem;position:relative;height:72vh'>
-<div style='position:absolute;top:8px;right:8px;z-index:2;display:flex;gap:4px'>
-<button class='zb' onclick='zoomBy(1.4)'>＋</button><button class='zb' onclick='zoomBy(1/1.4)'>－</button><button class='zb' onclick='zoomFit()'>⤢ fit</button></div>
-<svg id='g' xmlns='http://www.w3.org/2000/svg' style='width:100%;height:100%;cursor:grab'><g id='vp'></g></svg></div>
-<div id='tip' style='display:none;position:fixed;background:#1a212b;border:1px solid #3a4656;border-radius:6px;padding:.5rem .7rem;font-size:.8rem;max-width:380px;pointer-events:none;z-index:9'></div>
-<h2 style='font-size:1.05rem'>Explorer view</h2>
-{body}
-<script>
-const DATA={graph_json};
-const COLORS={{guard:'#e05252',router:'#e0a030',hook:'#4a90d9',skill:'#9b6dd6',script:'#8a949e',doc:'#5aa87a','':'#5f6b78'}};
-(function(){{
- DATA.open=true; if(DATA.children) DATA.children.forEach(c=>c.open=true);
- const svg=document.getElementById('g'), vp=document.getElementById('vp'), tip=document.getElementById('tip');
- const ROW=20, COL=190, PAD=30;
- let tx=0, ty=0, sc=1, extent={{w:900,h:400}};
- function apply(){{ vp.setAttribute('transform',`translate(${{tx}},${{ty}}) scale(${{sc}})`); }}
- window.zoomBy=function(f,cx,cy){{
-  const r=svg.getBoundingClientRect();
-  cx=(cx===undefined)?r.width/2:cx; cy=(cy===undefined)?r.height/2:cy;
-  const ns=Math.min(6,Math.max(0.08,sc*f));
-  tx=cx-(cx-tx)*(ns/sc); ty=cy-(cy-ty)*(ns/sc); sc=ns; apply();
- }};
- window.zoomFit=function(){{
-  const r=svg.getBoundingClientRect();
-  sc=Math.min(6,Math.max(0.08,Math.min(r.width/extent.w,r.height/extent.h)));
-  tx=(r.width-extent.w*sc)/2; ty=(r.height-extent.h*sc)/2; apply();
- }};
- svg.addEventListener('wheel',e=>{{ e.preventDefault();
-  const r=svg.getBoundingClientRect();
-  zoomBy(e.deltaY<0?1.15:1/1.15, e.clientX-r.left, e.clientY-r.top);
- }},{{passive:false}});
- let drag=null;
- svg.addEventListener('mousedown',e=>{{ drag={{x:e.clientX-tx,y:e.clientY-ty}}; svg.style.cursor='grabbing'; }});
- window.addEventListener('mousemove',e=>{{ if(drag){{ tx=e.clientX-drag.x; ty=e.clientY-drag.y; apply(); }} }});
- window.addEventListener('mouseup',()=>{{ drag=null; svg.style.cursor='grab'; }});
- function layout(){{
-  let y=0; const nodes=[], links=[];
-  (function walk(n,depth,parent){{
-   const me={{n:n,x:PAD+depth*COL,y:0,depth:depth}};
-   nodes.push(me);
-   if(n.children&&n.open){{
-    const kids=n.children.map(c=>walk(c,depth+1,me));
-    me.y=(kids[0].y+kids[kids.length-1].y)/2;
-   }} else {{ me.y=PAD+y*ROW; y++; }}
-   if(parent) links.push([parent,me]);
-   return me;
-  }})(DATA,0,null);
-  return {{nodes:nodes,links:links,h:PAD*2+y*ROW,w:PAD*2+(Math.max(...nodes.map(m=>m.depth))+1)*COL}};
- }}
- function esc(s){{return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;');}}
- function render(keepView){{
-  const L=layout();
-  extent={{w:Math.max(L.w,900),h:Math.max(L.h,120)}};
-  let out='';
-  for(const [a,b] of L.links)
-   out+=`<path d='M${{a.x+6}} ${{a.y}} C ${{(a.x+b.x)/2}} ${{a.y}}, ${{(a.x+b.x)/2}} ${{b.y}}, ${{b.x-6}} ${{b.y}}' fill='none' stroke='#2e3a49' stroke-width='1.2'/>`;
-  L.nodes.forEach((m,i)=>{{
-   const n=m.n, isDir=!!n.children, r=isDir?6:Math.min(4+n.churn,9);
-   const fill=isDir?'#38b2ac':(COLORS[n.role]||COLORS['']);
-   out+=`<g class='nd' data-i='${{i}}' transform='translate(${{m.x}},${{m.y}})' style='cursor:pointer'>`+
-    `<circle r='${{r}}' fill='${{fill}}' stroke='#0e1218' stroke-width='1.5' opacity='${{isDir&&!n.open?0.55:1}}'/>`+
-    (n.churn?`<circle r='${{r+3}}' fill='none' stroke='#e0a030' stroke-width='1'/>`:'')+
-    `<text x='${{r+5}}' y='4' fill='${{isDir?'#a8e0dc':'#c4cfdb'}}' font-size='11'>${{esc(n.id)}}${{isDir?(n.open?'':' ▸ ('+n.children.length+')'):''}}</text></g>`;
-  }});
-  vp.innerHTML=out;
-  if(!keepView) zoomFit();
-  vp.querySelectorAll('.nd').forEach(g=>{{
-   const m=L.nodes[+g.dataset.i], n=m.n;
-   g.onclick=()=>{{
-    if(n.children){{ n.open=!n.open; render(true); return; }}
-    const el=document.getElementById('f-'+n.path.replace(/\\//g,'--').replace(/\\./g,'_'));
-    if(el){{ el.open=true; let p=el.parentElement;
-     while(p){{ if(p.tagName==='DETAILS')p.open=true; p=p.parentElement; }}
-     el.scrollIntoView({{behavior:'smooth',block:'center'}});
-     el.classList.add('flash'); setTimeout(()=>el.classList.remove('flash'),1600); }}
-   }};
-   g.onmousemove=e=>{{ tip.style.display='block'; tip.style.left=(e.clientX+14)+'px'; tip.style.top=(e.clientY+10)+'px';
-    tip.innerHTML=`<b>${{esc(n.path)}}</b>`+(n.role?` <span style='color:#8fa0b3'>[${{esc(n.role)}}]</span>`:'')+
-     (n.purpose?`<br>${{esc(n.purpose)}}`:'')+(n.why?`<br><span style='color:#e0a030'>${{esc(n.why)}}</span>`:'')+
-     (n.churn?`<br><span style='color:#8fa0b3'>churn 30d: ×${{n.churn}}</span>`:''); }};
-   g.onmouseleave=()=>tip.style.display='none';
-  }});
- }}
- render();
-}})();
-</script>
-<script>
-const IDE_URLS={{vscode:p=>'vscode://file'+p, cursor:p=>'cursor://file'+p,
- idea:p=>'idea://open?file='+encodeURIComponent(p), pycharm:p=>'pycharm://open?file='+encodeURIComponent(p),
- subl:p=>'subl://open?url='+encodeURIComponent('file://'+p), zed:p=>'zed://file'+p,
- finder:p=>'file://'+p.split('/').slice(0,-1).join('/')}};
-(function(){{
- const sel=document.getElementById('ide');
- sel.value=localStorage.getItem('raven-ide')||'vscode';
- document.querySelectorAll('.openIDE').forEach(a=>{{
-  a.onclick=e=>{{e.preventDefault();
-   const mk=IDE_URLS[sel.value]||IDE_URLS.vscode;
-   window.location.href=mk(a.dataset.path);}};
- }});
-}})();
-function hl(s){{document.querySelectorAll('.prog').forEach(d=>{{
- const on=s&&(d.dataset.sessions||'').split(' ').includes(s);
- d.classList.toggle('hl',on); if(on){{let p=d.parentElement;while(p){{if(p.tagName==='DETAILS')p.open=true;p=p.parentElement;}}}}
-}});}}
-</script></body></html>"""
+    okf = tree.get("okf") or build_okf(_flat_dict(tree))
+    summary = repo_summary()
+    nodes_out = enrich_nodes(list(okf.get("nodes") or []))
+    payload = {
+        "nodes": nodes_out,
+        "edges": okf.get("edges", []),
+        "git_head": okf.get("git_head", ""),
+        "repo": tree.get("repo") or REPO.name,
+        "summary": summary,
+    }
+    publish_viewer()
+    page = stub_html(payload)
     HTML_PATH.parent.mkdir(parents=True, exist_ok=True)
     HTML_PATH.write_text(page)
-    # Uniform per-repo name so the dashboard switcher can address every tree
-    named = TREES_DIR / f"{tree['repo']}.html"
-    if named != HTML_PATH:
-        named.write_text(page)
+    (TREE_PATH.with_name("code-xray.html")).write_text(page)
+    try:
+        man = json.loads((REPO / ".raven" / "manifest.json").read_text())
+        raw = man.get("project")
+        if isinstance(raw, dict):
+            raw = raw.get("name") or raw.get("project") or ""
+        pname = str(raw or "").strip()
+        if re.match(r"^[A-Za-z0-9._-]+$", pname):
+            (HTML_PATH.parent / f"{pname}.html").write_text(page)
+    except Exception:
+        pass
     if open_after:
-        subprocess.Popen(["open", str(HTML_PATH)])
+        subprocess.Popen(["open", str(HTML_PATH)], start_new_session=True)
     return HTML_PATH
+
+
+def _flat_dict(tree: dict) -> dict:
+    flat: dict[str, dict] = {}
+    _flatten(tree.get("root") or {}, flat)
+    return flat
+
 
 
 def _flat_items(tree: dict):
@@ -545,6 +735,14 @@ def main() -> None:
     ap.add_argument("--commit", default=None)
     ap.add_argument("--for-prompt", default=None)
     ap.add_argument("--repo", default=None, help="build for another repo root (writes code-tree-<name>.html)")
+    ap.add_argument("--node", default=None)
+    ap.add_argument("--neighbors", default=None)
+    ap.add_argument("--path-from", default=None)
+    ap.add_argument("--path-to", default=None)
+    ap.add_argument("--impact", default=None, help="commit SHA / short")
+    ap.add_argument("--gaps", action="store_true")
+    ap.add_argument("--query-type", default="", help="node type or edge type (touches, imports, …)")
+    ap.add_argument("--if-stale", type=int, default=0, metavar="N", help="skip rebuild if git_head matches HEAD")
     args = ap.parse_args()
 
     if args.repo:
@@ -557,10 +755,11 @@ def main() -> None:
         HTML_PATH = TREES_DIR / f"{REPO.name}.html"
 
     if args.build:
-        t = build()
+        t = build(if_stale=args.if_stale)
         flat = dict(_flat_items(t))
         print(f"code-tree: built {len(flat)} nodes → {TREE_PATH}")
-    if args.delta:
+    query_commit = args.commit if (args.query_type or args.impact) else None
+    if args.delta and not query_commit:
         n = delta(args.files or [], args.session, args.commit)
         print(f"code-tree: {'full rebuild (no tree existed)' if n < 0 else f'{n} node(s) patched'}")
     if args.digest:
@@ -568,7 +767,30 @@ def main() -> None:
     if args.html:
         p = render_html(args.open)
         print(f"code-tree: HTML → {p}")
-    if not any([args.build, args.delta, args.digest, args.html]):
+    okf = (_load() or {}).get("okf")
+    if args.node or args.neighbors or args.path_from or args.impact or args.gaps or args.query_type:
+        if not okf:
+            t = _load() or build()
+            okf = t.get("okf") or {}
+        if args.query_type:
+            print(json.dumps(
+                query_graph(okf, type=args.query_type, commit=query_commit or args.impact or ""),
+                indent=1,
+            ))
+        elif query_commit and not args.impact:
+            print(json.dumps(commit_impact(okf, query_commit), indent=1))
+        if args.node:
+            print(json.dumps(get_node(okf, args.node), indent=1))
+        if args.neighbors:
+            print(json.dumps(get_neighbors(okf, args.neighbors), indent=1))
+        if args.path_from and args.path_to:
+            print(json.dumps(shortest_path(okf, args.path_from, args.path_to), indent=1))
+        if args.impact:
+            print(json.dumps(commit_impact(okf, args.impact), indent=1))
+        if args.gaps:
+            print(json.dumps(find_gaps(okf), indent=1))
+    if not any([args.build, args.delta, args.digest, args.html, args.node, args.neighbors,
+                args.path_from, args.impact, args.gaps, args.query_type]):
         ap.print_help()
 
 

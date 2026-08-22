@@ -651,8 +651,29 @@ def main():
         except Exception:
             pass  # Non-critical — session continues regardless
 
+    # 5b. Base routing ON for every session (LiteLLM not wired yet).
+    try:
+        _mr = Path(__file__).resolve().parent.parent / "routing" / "model-router.py"
+        if _mr.is_file():
+            subprocess.run(
+                [sys.executable, str(_mr), "--session-start"],
+                cwd=str(find_project_root()),
+                timeout=8,
+                capture_output=True,
+            )
+        context_router = (
+            "\n\n[RAVEN BASE ROUTER — ON this session]\n"
+            "SIMPLE self-contained → MUST spawn Haiku via Agent tool.\n"
+            "MEDIUM/COMPLEX → session model; subagents use that tier. Never auto-Opus/Fable.\n"
+            "Primary /model is not swapped (Claude Code). LiteLLM backend: not wired.\n"
+            "/router off opts out until the next SessionStart."
+        )
+    except Exception:
+        context_router = "\n\n[RAVEN BASE ROUTER] arm failed — classify on UserPromptSubmit anyway."
+
     # 6. Format context string
     context = format_context(project, all_providers, routing, model_env_written, domain_skill)
+    context = context + context_router
 
     # 6-pre. Visible health checks: routing validity + notification mode.
     # PASS/FAIL lines, not raw config dumps — silence is how the
@@ -686,23 +707,7 @@ def main():
         _dash_one = "📊 Dashboard: ~/RavenVault/dashboard.html"
         context = _dash_one + "\n\n" + context
 
-    # 6b. RavenVault curated digest (hub + open questions + last sessions)
-    try:
-        import subprocess as _sp
-        _vl = Path(__file__).resolve().parent / "vault-load.py"
-        if not _vl.exists():
-            _vl = Path(__file__).resolve().parent.parent / "scripts" / "vault-load.py"
-        if _vl.exists():
-            _r = _sp.run(
-                [sys.executable, str(_vl)],
-                capture_output=True,
-                text=True,
-                timeout=5,
-            )
-            if _r.returncode == 0 and _r.stdout.strip():
-                context = context + "\n\n" + _r.stdout.strip()
-    except Exception:
-        pass  # vault-load is best-effort — never block session start
+    # 6b. Vault digest is NOT injected. Agents Read .raven/memory/CARD.md (boot).
 
     # 6c. Build compact system notification (always shown in Claude Code UI)
     badge_short = "BROWNFIELD" if project["type"] == "brownfield" else "GREENFIELD"
@@ -726,7 +731,8 @@ def main():
 
     system_message = (
         f"Raven ✅  {badge_short}{stack_line}{skill_line}{providers_short}\n"
-        f"{_dash_one}"
+        f"{_dash_one}\n"
+        f"🔀 Base router ON · SIMPLE→Haiku Agent if self-contained · /router off until next session"
     )
 
     # 7. Output JSON for SessionStart hook

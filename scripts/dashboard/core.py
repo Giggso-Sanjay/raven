@@ -31,12 +31,15 @@ Metadata block always present: report timestamp, plugin version, company,
 project, user, manifest snapshot.
 
 Recommendations engine: rule-based, reads metrics, surfaces 3-7 actionable
-suggestions per session ("Opus % at 38% — review prompts for over-classification").
+suggestions per session ("COMPLEX-tier rate at 38% — review prompts for
+over-classification"; COMPLEX routes to Sonnet-5-high, never Opus — see
+model-router.py's defaults and CLAUDE.md Rule 8).
 
 Local-only. No telemetry. No Hub. ~500 LOC.
 """
 
 import argparse
+import html as html_lib
 import json
 import os
 import re
@@ -401,7 +404,7 @@ def build_citation_registry(metrics: dict, metadata: dict) -> list[dict]:
             "title": "Project hubs & notes (agent memory)",
             "path": f"{vault}/projects/*.md, concepts/, decisions/, sessions/",
             "field": "frontmatter + ## Current state / Open questions / Recent sessions",
-            "rule": "Written by obsidian-log / knowledge-extract / claude-mem; loaded by vault-load at SessionStart.",
+            "rule": "Written by obsidian-log / knowledge-extract; agent boot Reads .raven/memory/CARD.md if ide-boot load=1.",
             "used_for": "Graph briefings, open questions, repo links, local paths",
         },
         {
@@ -919,20 +922,26 @@ def recommend_user_behavior(metrics: dict, metadata: dict) -> list:
     tcs = uw.get("tier_counts") or {}
     total_user_calls = sum(tcs.values()) or 1
 
-    # Rule U1 — User Opus over-classification (user_work tier mix only)
-    user_opus_pct = (tcs.get("COMPLEX", 0) / total_user_calls * 100)
-    if user_opus_pct > 30:
+    # Rule U1 — User COMPLEX-tier over-classification (user_work tier mix only).
+    # COMPLEX routes to Sonnet-5-high, NOT Opus — Opus/Fable are excluded from
+    # auto-routing by design (model-router.py defaults, CLAUDE.md Rule 8:
+    # NO AUTO-OPUS). This used to be mislabeled "Opus rate" before that rule
+    # was locked in; fixed 2026-08-21 so the panel doesn't claim a cost tier
+    # the router is not allowed to auto-select.
+    user_complex_pct = (tcs.get("COMPLEX", 0) / total_user_calls * 100)
+    if user_complex_pct > 30:
         recs.append({
             "owner": "user",
-            "metric": "Your Opus rate: {:.0f}%".format(user_opus_pct),
+            "metric": "Your COMPLEX-tier rate: {:.0f}%".format(user_complex_pct),
             "severity": "high",
             "issue": "Your prompts are classifying as COMPLEX too often. This routes "
-                     "you to Opus (~50× cost of Haiku).",
+                     "you to Sonnet-5-high (more expensive than the SIMPLE/MEDIUM "
+                     "defaults, but never Opus — Raven never auto-selects Opus).",
             "action": "Be more specific in prompts so scope is clear. Split big asks "
                      "into smaller steps. For simple edits, say 'simple' explicitly.",
-            "savings_estimate_usd": round(uw.get("cost_usd", 0) * (user_opus_pct - 20) / 100, 2),
+            "savings_estimate_usd": round(uw.get("cost_usd", 0) * (user_complex_pct - 20) / 100, 2),
         })
-    elif user_opus_pct == 0 and total_user_calls > 5:
+    elif user_complex_pct == 0 and total_user_calls > 5:
         recs.append({
             "owner": "user",
             "metric": "0% COMPLEX across {} prompts".format(total_user_calls),
@@ -951,7 +960,8 @@ def recommend_user_behavior(metrics: dict, metadata: dict) -> list:
             "metric": "${:.2f} on your work this session".format(uw.get("cost_usd", 0)),
             "severity": "medium",
             "issue": "Your session is expensive on the user_work side (separate from "
-                     "Raven's overhead). Long context, many Opus calls, or both.",
+                     "Raven's overhead). Long context, many COMPLEX-tier (Sonnet-5-high) "
+                     "calls, or both.",
             "action": "Use /clear to reset context between tasks. For repeated edit "
                      "loops, switch to Haiku via .model.env override.",
         })
@@ -2415,17 +2425,65 @@ def render_knowledge_graph_section(
     }};
 
     function drawOfflineSvg(nodesArr, edgesArr) {{
-      // Always-on layout (no CDN). Circular placement — data is never "gone".
+      // Always-on layout (no CDN). Top-down layered tree — root(s) at top,
+      // children spread horizontally below by BFS depth (2026-08-21: was a
+      // circle/ellipse; user wants a real top-to-bottom mind map).
       const container = document.getElementById('kg-canvas');
       const W = Math.max(container.clientWidth || 480, 320);
-      const H = 500;
-      const cx = W / 2, cy = H / 2;
-      const R = Math.min(W, H) * 0.38;
-      const n = nodesArr.length || 1;
+      const ROW_H = 90;
+
+      const hasIncoming = {{}};
+      edgesArr.forEach(function(e) {{ hasIncoming[e.to] = true; }});
+      const children = {{}};
+      edgesArr.forEach(function(e) {{
+        (children[e.from] = children[e.from] || []).push(e.to);
+      }});
+      const roots = nodesArr.filter(function(n) {{ return !hasIncoming[n.id]; }});
+      const rootList = roots.length ? roots : nodesArr.slice(0, 1);
+
+      const depth = {{}};
+      const queue = rootList.map(function(n) {{ return {{ id: n.id, d: 0 }}; }});
+      const seen = {{}};
+      rootList.forEach(function(n) {{ seen[n.id] = true; }});
+      while (queue.length) {{
+        const cur = queue.shift();
+        depth[cur.id] = Math.max(depth[cur.id] || 0, cur.d);
+        (children[cur.id] || []).forEach(function(childId) {{
+          if (!seen[childId]) {{ seen[childId] = true; queue.push({{ id: childId, d: cur.d + 1 }}); }}
+        }});
+      }}
+      nodesArr.forEach(function(n) {{ if (depth[n.id] === undefined) depth[n.id] = 0; }});
+
+      const byRow = {{}};
+      nodesArr.forEach(function(n) {{
+        const d = depth[n.id];
+        (byRow[d] = byRow[d] || []).push(n.id);
+      }});
+      // Dense graphs (many edges, few real hierarchy levels) pile most
+      // nodes into one BFS depth — wrap wide rows into sub-rows so the
+      // layout still grows top-to-bottom instead of reading as one wide
+      // horizontal band.
+      const MAX_PER_ROW = 6;
+      const SUB_ROW_H = ROW_H * 0.6;
+      let totalSubRows = 0;
+      const subRowStart = {{}};
+      Object.keys(byRow).sort(function(a, b) {{ return Number(a) - Number(b); }}).forEach(function(dKey) {{
+        subRowStart[dKey] = totalSubRows;
+        totalSubRows += Math.ceil(byRow[dKey].length / MAX_PER_ROW);
+      }});
+      const H = Math.max(totalSubRows * SUB_ROW_H + 100, 320);
+
       const pos = {{}};
-      nodesArr.forEach(function(node, i) {{
-        const a = (2 * Math.PI * i) / n - Math.PI / 2;
-        pos[node.id] = {{ x: cx + R * Math.cos(a), y: cy + R * Math.sin(a) }};
+      Object.keys(byRow).forEach(function(dKey) {{
+        const row = byRow[dKey];
+        row.forEach(function(id, i) {{
+          const subRow = Math.floor(i / MAX_PER_ROW);
+          const withinSubRow = row.slice(subRow * MAX_PER_ROW, subRow * MAX_PER_ROW + MAX_PER_ROW);
+          const idxInSubRow = i % MAX_PER_ROW;
+          const y = 50 + (subRowStart[dKey] + subRow) * SUB_ROW_H;
+          const x = W * (idxInSubRow + 1) / (withinSubRow.length + 1);
+          pos[id] = {{ x: x, y: y }};
+        }});
       }});
       let edgesSvg = edgesArr.map(function(e) {{
         const a = pos[e.from], b = pos[e.to];
@@ -2629,6 +2687,677 @@ def render_cost_log_section(metadata: dict) -> str:
 """
 
 
+RAVEN_DASHBOARD_NAME = "raven-dashboard.html"
+
+
+def _tail_jsonl(path: Path, n: int = 40) -> list:
+    if not path.is_file() or n <= 0:
+        return []
+    try:
+        lines = path.read_text(encoding="utf-8", errors="replace").splitlines()
+    except OSError:
+        return []
+    out = []
+    for line in lines[-n:]:
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            out.append(json.loads(line))
+        except json.JSONDecodeError:
+            continue
+    return out
+
+
+def _td(v, money=False) -> str:
+    if v is None or v == "":
+        s = "—"
+    elif money:
+        try:
+            s = f"${float(v):.4f}"
+        except (TypeError, ValueError):
+            s = str(v)
+    else:
+        s = str(v)
+    if len(s) > 80:
+        s = s[:77] + "…"
+    return html_lib.escape(s)
+
+
+def _details_json(obj: dict) -> str:
+    blob = html_lib.escape(json.dumps(obj, indent=2)[:2000])
+    return f"<details><summary>json</summary><pre class='dim'>{blob}</pre></details>"
+
+
+def _audit_tail(n: int = 30, raven_dir: Optional[Path] = None) -> list:
+    d = raven_dir if raven_dir is not None else AUDIT_DIR
+    if not d.is_dir():
+        return []
+    files = sorted(d.glob("*.log"))[-5:]
+    rows = []
+    for f in files:
+        rows.extend(_tail_jsonl(f, 200))
+    return rows[-n:]
+
+
+def _stamp_repo(row: dict, fallback: str) -> dict:
+    r = dict(row)
+    if not str(r.get("repo") or r.get("project") or "").strip():
+        r["repo"] = fallback
+    return r
+
+
+def _gather_repo_logs(names: list, per: int = 40) -> tuple:
+    """Pull turn/cost/audit JSONL from each local clone + this repo."""
+    turns: list = []
+    costs: list = []
+    audits: list = []
+    seen: set = set()
+    roots: list = []
+    for name in names:
+        if not isinstance(name, str):
+            continue
+        lp = resolve_local_path(str(name), "")
+        if lp and Path(lp, ".git").is_dir():
+            roots.append(Path(lp).resolve())
+    roots.append(PROJECT_DIR.resolve())
+    for root in roots:
+        key = str(root)
+        if key in seen:
+            continue
+        seen.add(key)
+        raven = root / ".raven"
+        label = root.name
+        try:
+            raw = json.loads((raven / "manifest.json").read_text()).get("project")
+            if isinstance(raw, dict):
+                raw = raw.get("name") or raw.get("project")
+            if raw:
+                label = str(raw)
+        except Exception:
+            pass
+        for row in _tail_jsonl(raven / "turn-log.jsonl", per):
+            turns.append(_stamp_repo(row, label))
+        for row in _tail_jsonl(raven / "cost-log.jsonl", per):
+            costs.append(_stamp_repo(row, label))
+        for row in _audit_tail(per, raven / "audit"):
+            audits.append(_stamp_repo(row, label))
+    def _ts(r):
+        return str(r.get("ts") or r.get("timestamp") or "")
+    turns.sort(key=_ts)
+    costs.sort(key=_ts)
+    audits.sort(key=_ts)
+    return turns[-per:], costs[-per:], audits[-per:]
+
+
+def _is_okf_html(path: Path) -> bool:
+    try:
+        head = path.read_text(errors="replace")[:8000]
+    except OSError:
+        return False
+    return 'id="okf"' in head or "EXTRACTED graph" in head
+
+
+def _safe_repo_stem(name: str) -> bool:
+    return bool(re.match(r"^[A-Za-z0-9._-]+$", name or ""))
+
+
+def _tree_files() -> dict[str, str]:
+    """OKF graphs only — never legacy folder-trees / mind-maps / junk names."""
+    trees = VAULT / "dashboard" / "trees"
+    out: dict[str, str] = {}
+    if not trees.is_dir():
+        return out
+    for p in trees.glob("*.html"):
+        if not _safe_repo_stem(p.stem):
+            continue
+        if _is_okf_html(p):
+            out[p.stem.lower()] = p.name
+    return out
+
+
+def _ensure_okf_graphs(names: list[str]) -> None:
+    """Synchronously build OKF HTML (xray.render_html) for each local clone."""
+    xray = Path(__file__).resolve().parent / "xray.py"
+    if not xray.is_file():
+        return
+    trees = VAULT / "dashboard" / "trees"
+    trees.mkdir(parents=True, exist_ok=True)
+    seen: set[str] = set()
+    for name in names:
+        if not isinstance(name, str):
+            continue
+        lp = resolve_local_path(str(name), "")
+        if not lp or not Path(lp, ".git").is_dir():
+            continue
+        key = str(Path(lp).resolve())
+        if key in seen:
+            continue
+        seen.add(key)
+        dest = trees / f"{Path(lp).name}.html"
+        if dest.is_file() and _is_okf_html(dest):
+            continue
+        try:
+            subprocess.run(
+                [sys.executable, str(xray), "--repo", lp, "--html"],
+                cwd=lp,
+                timeout=180,
+                capture_output=True,
+            )
+        except Exception as e:
+            print(f"dashboard: OKF build skipped for {name}: {e}", file=sys.stderr)
+
+
+def write_raven_dashboard(metadata: dict, metrics: Optional[dict] = None) -> Path:
+    """Full dashboard: Graph + Overview + Repos + Costs + Guards. Graph = xray OKF only."""
+    out_dir = VAULT / "dashboard"
+    out_dir.mkdir(parents=True, exist_ok=True)
+    try:
+        import xray as _xray
+        _xray.render_html(open_after=False)
+        n = _xray.rebake_tree_htmls()
+        print(f"dashboard: rebaked {n} graph pages onto shared okf-viewer.js", file=sys.stderr)
+    except Exception as e:
+        print(f"dashboard: xray.render_html failed: {e}", file=sys.stderr)
+    metrics = metrics or {}
+    project = metadata.get("project") or "raven"
+    bp = metrics.get("by_project") or {}
+    _ensure_okf_graphs([project, *list(bp.keys())])
+    tree_map = _tree_files()
+    want = str(project).lower()
+    tree_file = (
+        tree_map.get(want)
+        or tree_map.get(Path(metadata.get("project_path") or ".").name.lower())
+        or ""
+    )
+    iframe = f"trees/{tree_file}" if tree_file else ""
+    opts = "".join(
+        f"<option value='{fn}' {'selected' if fn == tree_file else ''}>{stem}</option>"
+        for stem, fn in sorted(tree_map.items())
+    ) or "<option value=''>no graphs yet</option>"
+
+    repo_rows = []
+    listed: set[str] = set()
+    for stem, fn in sorted(tree_map.items()):
+        listed.add(stem)
+        b = bp.get(stem) if isinstance(bp.get(stem), dict) else {}
+        if not b:
+            for pk, pv in bp.items():
+                if str(pk).lower() == stem and isinstance(pv, dict):
+                    b = pv
+                    break
+        click = f"goOkf('{fn}')"
+        repo_rows.append(
+            f"<tr style='cursor:pointer' onclick=\"{click}\"><td><b>{stem}</b></td>"
+            f"<td class='num'>{int(b.get('sessions') or 0)}</td>"
+            f"<td class='num'>{int(b.get('tokens') or 0):,}</td>"
+            f"<td class='num'>${float(b.get('cost_usd') or 0):.2f}</td>"
+            f"<td>graph</td></tr>"
+        )
+    for name, b in sorted(bp.items(), key=lambda kv: str(kv[0]).lower()):
+        if not isinstance(name, str) or not _safe_repo_stem(str(name)):
+            continue
+        if not isinstance(b, dict):
+            continue
+        key = str(name).lower()
+        if key in listed:
+            continue
+        fn = tree_map.get(key)
+        click = f"goOkf('{fn}')" if fn else ""
+        graph_cell = "graph" if fn else "<span class='dim'>no graph file</span>"
+        style = "cursor:pointer" if fn else ""
+        repo_rows.append(
+            f"<tr style='{style}' onclick=\"{click}\"><td><b>{name}</b></td>"
+            f"<td class='num'>{int(b.get('sessions') or 0)}</td>"
+            f"<td class='num'>{int(b.get('tokens') or 0):,}</td>"
+            f"<td class='num'>${float(b.get('cost_usd') or 0):.2f}</td>"
+            f"<td>{graph_cell}</td></tr>"
+        )
+    repo_tbl = "".join(repo_rows) or "<tr><td colspan='5'>No repo metrics yet</td></tr>"
+
+    guards = metrics.get("guard_events") or {}
+    GUARD_MEANING = {
+        "unknown": "Audit JSON with no event/kind — usually token/cost lines, not a block.",
+        "notify": "notify.py ran (email/Slack). dry-run = no secrets file; not a violation.",
+        "guard_block": "A guard denied an action (real stop). Read the audit line for which guard.",
+        "guard_warn": "A guard warned but allowed the action.",
+        "design": "Logged design note (Andie-Jr / plan). Not a security hit.",
+        "implement": "Logged implement note after go-ahead. Not a security hit.",
+        "commit": "Pre-commit notify: gate passed.",
+        "block": "Pre-commit notify: gate blocked the commit.",
+        "override": "Guard override flag used ([GUARD:ALLOW-DELETE] etc.).",
+        "token-warning": "Session token threshold crossed (75%/90%).",
+        "incident": "P1/P2 incident notify was attempted.",
+        "violation": "Policy/style/CVE/secret rule recorded a violation.",
+        "approval": "An approval/override was logged.",
+    }
+    if hasattr(guards, "items"):
+        g_rows = "".join(
+            f"<tr><td><code>{k}</code></td><td class='num'>{v}</td>"
+            f"<td class='dim'>{GUARD_MEANING.get(str(k), 'Audit line kind from .raven/audit — not always a guard fire.')}</td></tr>"
+            for k, v in sorted(guards.items(), key=lambda x: -x[1])[:20]
+        )
+    else:
+        g_rows = ""
+    n_guards = sum(guards.values()) if hasattr(guards, "values") else 0
+
+    turn_log, cost_log, audit_log = _gather_repo_logs(
+        [project, *list(tree_map.keys()), *list(bp.keys())], per=40
+    )
+    logpack_json = json.dumps({"turn": turn_log, "cost": cost_log, "audit": audit_log})
+    try:
+        from dash_settings import public_view as _pv
+        settings_json = json.dumps(_pv())
+    except Exception:
+        settings_json = "{}"
+    repos_for_filter = sorted({
+        *tree_map.keys(),
+        *[
+            str(r.get("repo") or r.get("project") or "").strip()
+            for r in (turn_log + cost_log + audit_log)
+            if str(r.get("repo") or r.get("project") or "").strip()
+        ],
+    }, key=lambda s: s.lower())
+    log_repo_opts = '<option value="all">all repos</option>' + "".join(
+        f'<option value="{html_lib.escape(x)}">{html_lib.escape(x)}</option>' for x in repos_for_filter
+    )
+
+    def _repo_cell(r: dict) -> str:
+        return str(r.get("repo") or r.get("project") or "—")
+
+    if turn_log:
+        turn_tbl = "".join(
+            f"<tr data-repo='{html_lib.escape(_repo_cell(r).lower())}'>"
+            f"<td>{_td(r.get('ts'))}</td><td>{_td(_repo_cell(r))}</td>"
+            f"<td>{_td(r.get('ide') or r.get('host'))}</td>"
+            f"<td>{_td(r.get('tier'))}</td><td>{_td(r.get('recommend'))}</td>"
+            f"<td class='num'>{_td(r.get('est_cost_usd'), money=True)}</td>"
+            f"<td class='num'>{_td(r.get('total_cost_usd'), money=True)}</td>"
+            f"<td>{('<a href=\"'+html_lib.escape(str(r.get('obs_url')))+'\" target=\"_blank\" rel=\"noopener\">LangSmith</a>') if r.get('obs_url') else '—'}</td>"
+            f"<td><button type='button' onclick=\"openLog('turn',{i})\">json</button></td></tr>"
+            for i, r in reversed(list(enumerate(turn_log)))
+        )
+    else:
+        turn_tbl = "<tr><td colspan='8'>No router fires logged. If Codex/Grok skipped model-router.py, this stays empty.</td></tr>"
+    if cost_log:
+        cost_tbl = "".join(
+            f"<tr data-repo='{html_lib.escape(_repo_cell(r).lower())}'>"
+            f"<td>{_td(r.get('ts'))}</td><td>{_td(_repo_cell(r))}</td>"
+            f"<td>{_td(r.get('ide'))}</td><td>{_td(r.get('model'))}</td>"
+            f"<td>{_td(r.get('source'))}</td>"
+            f"<td class='num'>{_td(r.get('tokens_in'))}</td>"
+            f"<td class='num'>{_td(r.get('tokens_out'))}</td>"
+            f"<td class='num'>{_td(r.get('computed_cost_usd'), money=True)}</td>"
+            f"<td class='num'>{_td(r.get('total_cost_usd') or r.get('cum_session_usd'), money=True)}</td>"
+            f"<td><button type='button' onclick=\"openLog('cost',{i})\">json</button></td></tr>"
+            for i, r in reversed(list(enumerate(cost_log)))
+        )
+    else:
+        cost_tbl = "<tr><td colspan='10'>No Stop/token-meter rows yet (Grok often has no Stop hook).</td></tr>"
+    if audit_log:
+        audit_tbl = "".join(
+            f"<tr data-repo='{html_lib.escape(_repo_cell(r).lower())}'>"
+            f"<td>{_td(r.get('ts') or r.get('timestamp'))}</td>"
+            f"<td>{_td(_repo_cell(r))}</td>"
+            f"<td>{_td(r.get('ide') or r.get('host') or '—')}</td>"
+            f"<td>{_td(r.get('event') or r.get('kind') or 'unknown')}</td>"
+            f"<td>{_td(r.get('detail') or r.get('reason') or r.get('model') or '')}</td>"
+            f"<td><button type='button' onclick=\"openLog('audit',{i})\">json</button></td></tr>"
+            for i, r in reversed(list(enumerate(audit_log)))
+        )
+    else:
+        audit_tbl = "<tr><td colspan='6'>No audit JSONL in window.</td></tr>"
+
+    spend = float(metrics.get("total_cost_usd") or 0)
+    sess = int(metrics.get("sessions_count") or 0)
+    tok = int(metrics.get("total_tokens") or 0)
+    days = metrics.get("cost_by_day") or {}
+    day_rows = "".join(
+        f"<tr><td>{d}</td><td class='num'>${float(days[d]):.4f}</td></tr>"
+        for d in sorted(days.keys())[-14:]
+    )
+
+    okf_json = json.dumps(tree_map)
+    bp_json = json.dumps({
+        str(k).lower(): {
+            "sessions": int(v.get("sessions") or 0),
+            "tokens": int(v.get("tokens") or 0),
+            "cost_usd": float(v.get("cost_usd") or 0),
+        }
+        for k, v in bp.items()
+        if isinstance(k, str) and _safe_repo_stem(str(k)) and isinstance(v, dict)
+    })
+    page = f"""<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"/>
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate"/>
+<title>Raven dashboard — {project}</title>
+<!-- raven-dashboard v2: shell + xray.render_html OKF. No mind-maps. -->
+<style>
+:root{{--bg:#0e1116;--panel:#161b23;--line:#232c3a;--ink:#e6ebf2;--muted:#9aa7b8;--accent:#5aa2e0}}
+*{{box-sizing:border-box;margin:0}}
+body{{background:var(--bg);color:var(--ink);font:14px/1.45 system-ui,sans-serif;display:flex;min-height:100vh}}
+aside{{width:200px;background:var(--panel);border-right:1px solid var(--line);padding:16px 10px}}
+.nav{{display:block;width:100%;text-align:left;padding:8px 10px;margin:2px 0;border:0;border-radius:8px;background:none;color:var(--muted);cursor:pointer}}
+.nav.on,.nav:hover{{background:#1c2330;color:var(--ink)}}
+main{{flex:1;padding:16px;min-width:0}}
+.view{{display:none}}.view.on{{display:block}}
+iframe{{width:100%;height:calc(100vh - 120px);border:1px solid var(--line);border-radius:8px;background:#020617}}
+table{{width:100%;border-collapse:collapse}}
+th,td{{padding:8px;border-bottom:1px solid var(--line);text-align:left}}
+.num{{text-align:right;font-variant-numeric:tabular-nums}}
+.dim{{color:var(--muted)}}
+.tiles{{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:10px;margin:12px 0}}
+.tile{{background:var(--panel);padding:12px;border-radius:8px;border:1px solid var(--line)}}
+select{{background:#1c2330;color:var(--ink);border:1px solid var(--line);padding:4px 8px;border-radius:6px}}
+</style></head>
+<body>
+<aside>
+  <h1 style="font-size:16px;padding:0 8px 12px">🪶 Raven<br><span class="dim" style="font-size:12px" id="repoLabel">{project}</span></h1>
+  <button class="nav on" data-v="graph">Graph</button>
+  <button class="nav" data-v="home">Overview</button>
+  <button class="nav" data-v="repos">Repos</button>
+  <button class="nav" data-v="costs">Costs</button>
+  <button class="nav" data-v="logs">Logs</button>
+  <button class="nav" data-v="guards">Guards</button>
+  <button class="nav" data-v="settings">Settings</button>
+</aside>
+<main>
+<section class="view on" id="v-graph">
+  <h2>Graph</h2>
+  <p class="dim">Pick a repo — Graph loads <b>that</b> repo’s page. Built by <code>xray.render_html</code> when a local clone exists.</p>
+  <p style="margin:8px 0">Repo:
+    <select id="okfSel" onchange="goOkf(this.value)">{opts}</select>
+    <span class="dim" id="graphLooking">Looking at: {project}</span>
+  </p>
+  <iframe id="gframe" src="{iframe}" title="OKF graph"></iframe>
+</section>
+<section class="view" id="v-home">
+  <h2>Overview</h2>
+  <div class="tiles">
+    <div class="tile"><div class="dim">30d spend <span id="ovScope"></span></div><div style="font-size:22px" id="ovSpend">${spend:.2f}</div></div>
+    <div class="tile"><div class="dim">Sessions</div><div style="font-size:22px" id="ovSess">{sess}</div></div>
+    <div class="tile"><div class="dim">Tokens</div><div style="font-size:22px" id="ovTok">{tok:,}</div></div>
+    <div class="tile"><div class="dim">Guard events (all repos)</div><div style="font-size:22px">{n_guards}</div></div>
+  </div>
+</section>
+<section class="view" id="v-repos">
+  <h2>Repos</h2>
+  <p class="dim">Click a row to open that repo in the Graph pane.</p>
+  <table><thead><tr><th>Repo</th><th class="num">Sessions</th><th class="num">Tokens</th><th class="num">Cost</th><th>Graph</th></tr></thead>
+  <tbody>{repo_tbl}</tbody></table>
+</section>
+<section class="view" id="v-costs">
+  <h2>Costs</h2>
+  <div class="tiles">
+    <div class="tile"><div class="dim">Spend 30d</div><div style="font-size:22px" id="costSpend">${spend:.2f}</div></div>
+    <div class="tile"><div class="dim">Sessions</div><div style="font-size:22px" id="costSess">{sess}</div></div>
+  </div>
+  <table><thead><tr><th>Day</th><th class="num">Spend</th></tr></thead><tbody>{day_rows}</tbody></table>
+</section>
+<section class="view" id="v-logs">
+  <h2>Logs</h2>
+  <p class="dim">Every row is classified by <b>repo</b> and <b>IDE</b>. Filter, then json → detail. ← Back returns to these tables.</p>
+  <div id="logTables">
+  <p>Repo: <select id="logRepo" onchange="filterLogs(this.value)">{log_repo_opts}</select></p>
+  <h3 style="margin:16px 0 8px">Router (turn-log.jsonl)</h3>
+  <table><thead><tr><th>When</th><th>Repo</th><th>IDE</th><th>Tier</th><th>Recommend</th><th class="num">est</th><th class="num">total-cost</th><th>Observe</th><th></th></tr></thead>
+  <tbody>{turn_tbl}</tbody></table>
+  <h3 style="margin:16px 0 8px">Turns (cost-log.jsonl)</h3>
+  <table><thead><tr><th>When</th><th>Repo</th><th>IDE</th><th>Model</th><th>Source</th><th class="num">in</th><th class="num">out</th><th class="num">turn $</th><th class="num">total-cost</th><th></th></tr></thead>
+  <tbody>{cost_tbl}</tbody></table>
+  <h3 style="margin:16px 0 8px">Audit (latest lines)</h3>
+  <table><thead><tr><th>When</th><th>Repo</th><th>IDE</th><th>Event</th><th>Detail</th><th></th></tr></thead>
+  <tbody>{audit_tbl}</tbody></table>
+  </div>
+  <div id="logDetail" style="display:none">
+    <p><button type="button" onclick="closeLogDetail()">← Back to log tables</button>
+       <span class="dim" id="logDetailMeta"></span></p>
+    <pre id="logDetailPre" class="dim"></pre>
+  </div>
+</section>
+<section class="view" id="v-settings">
+  <h2>Settings</h2>
+  <p class="dim">See and edit local config. No API keys. Save needs <code>python3 scripts/ops/dashboard-server.py</code> (127.0.0.1:9787). file:// is view-only.</p>
+  <form id="setForm" class="tile" style="max-width:640px" onsubmit="return saveSettings(event)">
+    <p><label>LangSmith enabled <input type="checkbox" id="setLsOn"/></label></p>
+    <p><label>LangSmith base URL<br><input id="setLsBase" style="width:100%"/></label></p>
+    <p><label>LangSmith project (name only)<br><input id="setLsProj" style="width:100%"/></label></p>
+    <p class="dim">Traces stay in LangSmith. Logs get a project link + obs_run_id join key. We do not copy prompts into the repo.</p>
+    <p><label>AIRTaaS red-team MCP enabled <input type="checkbox" id="setAirOn"/></label></p>
+    <p><label>AIRTaaS MCP command or URL (no secrets)<br><input id="setAirMcp" style="width:100%" placeholder="npx … or http://…"/></label></p>
+    <p class="dim">Not shipped. When enabled, security-classed prompts log redteam=airtaas — the agent must call that MCP. Free single-dev: paste your AIRTaaS MCP here.</p>
+    <p><button type="submit">Save</button> <span class="dim" id="setMsg"></span></p>
+  </form>
+</section>
+<section class="view" id="v-guards">
+  <h2>Guards</h2>
+  <p class="dim">{n_guards} JSONL line(s) in <code>.raven/audit</code> for this window. Count is not “incidents.” Only <code>guard_block</code> / <code>block</code> / <code>violation</code> are stops.</p>
+  <table><thead><tr><th>Event</th><th class="num">Count</th><th>What it means</th></tr></thead>
+  <tbody>{g_rows or "<tr><td colspan='3'>No audit lines in window</td></tr>"}</tbody></table>
+</section>
+</main>
+<script>
+const OKF = {okf_json};
+const METRICS = {bp_json};
+const LOGPACK = __LOGPACK__;
+const SETTINGS = __SETTINGS__;
+const ALL = {{spend:{spend}, sess:{sess}, tok:{tok}}};
+function show(v){{
+  document.querySelectorAll('.nav').forEach(x=>x.classList.toggle('on', x.dataset.v===v));
+  document.querySelectorAll('.view').forEach(x=>x.classList.toggle('on', x.id==='v-'+v));
+}}
+document.querySelectorAll('.nav').forEach(n=>n.onclick=()=>show(n.dataset.v));
+function stemOf(fn){{ return (fn||'').replace(/\\.html$/i,''); }}
+function metricFor(stem){{
+  const s = (stem||'').toLowerCase();
+  const keys = Object.keys(METRICS);
+  const hit = keys.find(k => k.toLowerCase()===s || k.toLowerCase().replace(/_/g,'-')===s);
+  return hit ? METRICS[hit] : {{sessions:0, tokens:0, cost_usd:0}};
+}}
+function applyRepo(file){{
+  const stem = stemOf(file);
+  const el = document.getElementById('repoLabel');
+  if (el) el.textContent = stem || 'all';
+  const look = document.getElementById('graphLooking');
+  if (look) look.textContent = 'Looking at: ' + (stem || 'all');
+  const m = metricFor(stem);
+  const spend = m.cost_usd, sess = m.sessions, tok = m.tokens;
+  const fmt = n => (n||0).toLocaleString();
+  const money = n => '$'+(n||0).toFixed(2);
+  const set = (id, v) => {{ const n=document.getElementById(id); if(n) n.textContent=v; }};
+  set('ovSpend', money(spend));
+  set('ovSess', fmt(sess));
+  set('ovTok', fmt(tok));
+  set('ovScope', '('+stem+')');
+  set('costSpend', money(spend));
+  set('costSess', fmt(sess));
+  if (history.replaceState) history.replaceState(null,'','#'+stem);
+}}
+function filterLogs(repo){{
+  const r = (repo||'all').toLowerCase().replace(/\\.html$/,'');
+  document.querySelectorAll('#logTables tr[data-repo]').forEach(tr => {{
+    const v = (tr.getAttribute('data-repo')||'').toLowerCase();
+    const hit = (r==='all'||r===''||v===r||v.replace(/_/g,'-')===r.replace(/_/g,'-'));
+    tr.style.display = hit ? '' : 'none';
+  }});
+  const sel = document.getElementById('logRepo');
+  if (sel) {{
+    for (const o of sel.options) {{
+      if (o.value.toLowerCase()===r) {{ sel.value = o.value; break; }}
+    }}
+  }}
+}}
+function openLog(bag, i){{
+  const row = (LOGPACK[bag]||[])[i];
+  if (!row) return;
+  const tables = document.getElementById('logTables');
+  const det = document.getElementById('logDetail');
+  if (tables) tables.style.display = 'none';
+  if (det) det.style.display = 'block';
+  const meta = document.getElementById('logDetailMeta');
+  if (meta) meta.textContent = 'repo='+(row.repo||row.project||'—')+' · ide='+(row.ide||row.host||'—');
+  const pre = document.getElementById('logDetailPre');
+  if (pre) pre.textContent = JSON.stringify(row, null, 2);
+}}
+(function fillSettings(){{
+  const s = SETTINGS || {{}};
+  const on = document.getElementById('setLsOn');
+  if (on) on.checked = !!s.langsmith_enabled;
+  const b = document.getElementById('setLsBase');
+  if (b) b.value = s.langsmith_base_url || '';
+  const p = document.getElementById('setLsProj');
+  if (p) p.value = s.langsmith_project || '';
+  const ao = document.getElementById('setAirOn');
+  if (ao) ao.checked = !!s.airtaas_enabled;
+  const am = document.getElementById('setAirMcp');
+  if (am) am.value = s.airtaas_mcp || '';
+}})();
+function saveSettings(ev){{
+  ev.preventDefault();
+  const body = {{
+    langsmith_enabled: document.getElementById('setLsOn').checked,
+    langsmith_base_url: document.getElementById('setLsBase').value,
+    langsmith_project: document.getElementById('setLsProj').value,
+    airtaas_enabled: document.getElementById('setAirOn').checked,
+    airtaas_mcp: document.getElementById('setAirMcp').value
+  }};
+  const msg = document.getElementById('setMsg');
+  fetch('http://127.0.0.1:9787/api/settings', {{
+    method: 'POST', headers: {{'Content-Type':'application/json'}},
+    body: JSON.stringify(body)
+  }}).then(r => r.json()).then(d => {{
+    if (msg) msg.textContent = d.ok ? 'Saved. Rebuild dashboard to refresh Logs links.' : (d.error||'fail');
+  }}).catch(() => {{
+    if (msg) msg.textContent = 'Start: python3 scripts/ops/dashboard-server.py — file:// cannot write.';
+  }});
+  return false;
+}}
+function closeLogDetail(){{
+  const tables = document.getElementById('logTables');
+  const det = document.getElementById('logDetail');
+  if (det) det.style.display = 'none';
+  if (tables) tables.style.display = 'block';
+}}
+function goOkf(name){{
+  if(!name) return;
+  const allowed = Object.values(OKF);
+  if(allowed.indexOf(name)<0) return;
+  const fr = document.getElementById('gframe');
+  if (fr) fr.src = 'trees/'+name;
+  const sel = document.getElementById('okfSel');
+  if(sel) sel.value = name;
+  applyRepo(name);
+  show('graph');
+}}
+(function(){{
+  var h = decodeURIComponent((location.hash||'').replace(/^#/,''));
+  if(!h) return;
+  var s = h.toLowerCase().replace(/\\.html$/,'');
+  var file = OKF[s];
+  if(!file){{
+    var k = Object.keys(OKF).find(x => x.replace(/-/g,'')===s.replace(/-/g,''));
+    file = k ? OKF[k] : '';
+  }}
+  if(file) goOkf(file);
+}})();
+</script>
+</body></html>
+"""
+    dest = out_dir / RAVEN_DASHBOARD_NAME
+    page = page.replace("__LOGPACK__", logpack_json)
+    page = page.replace("__SETTINGS__", settings_json)
+    dest.write_text(page)
+    redirect = (
+        "<!doctype html><meta charset='utf-8'/>"
+        f"<meta http-equiv='refresh' content='0;url={RAVEN_DASHBOARD_NAME}'/>"
+        f"<a href='{RAVEN_DASHBOARD_NAME}'>Raven dashboard</a>\n"
+    )
+    (out_dir / "index.html").write_text(redirect)
+    (VAULT / "dashboard.html").write_text(
+        "<!doctype html><meta charset='utf-8'/>"
+        f"<meta http-equiv='refresh' content='0;url=dashboard/{RAVEN_DASHBOARD_NAME}'/>"
+        f"<a href='dashboard/{RAVEN_DASHBOARD_NAME}'>Raven dashboard</a>\n"
+    )
+    return dest
+
+
+def render_index_shell(metrics: dict, metadata: dict) -> str:
+    """Landing dashboard: Graph for THIS repo only. No other-repo picker."""
+    project = metadata.get("project") or "raven"
+    trees = VAULT / "dashboard" / "trees"
+    want = str(project).lower()
+    tree_file = ""
+    if trees.is_dir():
+        for p in trees.glob("*.html"):
+            if p.stem.lower() == want:
+                tree_file = p.name
+                break
+        if not tree_file:
+            folder = Path(metadata.get("project_path") or ".").name.lower()
+            for p in trees.glob("*.html"):
+                if p.stem.lower() == folder:
+                    tree_file = p.name
+                    break
+    iframe = f"trees/{tree_file}" if tree_file else ""
+    miss = "" if tree_file else "<p style='color:#e0a030'>No OKF graph for this repo yet.</p>"
+    spend = metrics.get("total_cost_usd") or (metrics.get("totals") or {}).get("cost_usd") or 0
+    try:
+        spend_s = f"${float(spend):.2f}"
+    except (TypeError, ValueError):
+        spend_s = "$0"
+    return f"""<!doctype html><html lang="en"><head><meta charset="utf-8">
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate"/>
+<title>Raven — {project}</title>
+<style>
+:root{{--bg:#0e1116;--panel:#161b23;--line:#232c3a;--ink:#e6ebf2;--ink2:#9aa7b8;--accent:#5aa2e0}}
+*{{box-sizing:border-box;margin:0}}
+body{{background:var(--bg);color:var(--ink);font:14px/1.5 system-ui,sans-serif;display:flex;min-height:100vh}}
+aside{{width:200px;background:var(--panel);border-right:1px solid var(--line);padding:16px 10px}}
+.nav{{display:block;width:100%;text-align:left;padding:8px 10px;margin:2px 0;border:0;border-radius:8px;
+background:none;color:var(--ink2);cursor:pointer}}
+.nav.on,.nav:hover{{background:#1c2330;color:var(--ink)}}
+main{{flex:1;padding:16px;min-width:0}}
+.view{{display:none}}.view.on{{display:block}}
+iframe{{width:100%;height:calc(100vh - 90px);border:1px solid var(--line);border-radius:8px;background:#020617}}
+a{{color:var(--accent)}}
+h2{{margin-bottom:8px}}
+</style></head><body>
+<aside>
+  <h1 style="font-size:16px;padding:0 8px 12px">🪶 Raven<br><span style="color:var(--ink2);font-size:12px;font-weight:400">{project}</span></h1>
+  <button class="nav on" data-v="graph">Graph</button>
+  <button class="nav" data-v="home">Overview</button>
+  <button class="nav" data-v="costs">Costs</button>
+</aside>
+<main>
+<section class="view on" id="v-graph">
+  <h2>Graph — {project}</h2>
+  <p style="color:var(--ink2);font-size:13px;margin-bottom:8px">This repo only. Click a node for summary and flow. Not a multi-repo mind map.</p>
+  {miss}
+  <iframe id="gframe" src="{iframe}" title="OKF graph"></iframe>
+</section>
+<section class="view" id="v-home">
+  <h2>Overview</h2>
+  <p>Project <b>{project}</b> · 30d spend {spend_s}</p>
+  <p style="color:var(--ink2);margin-top:12px"><a href="legacy.html">Detailed tokenomics / citations</a></p>
+</section>
+<section class="view" id="v-costs">
+  <h2>Costs</h2>
+  <p>30d {spend_s}. <a href="legacy.html">Full tables</a></p>
+</section>
+</main>
+<script>
+document.querySelectorAll('.nav').forEach(n=>n.onclick=()=>{{
+  document.querySelectorAll('.nav').forEach(x=>x.classList.remove('on'));
+  n.classList.add('on');
+  document.querySelectorAll('.view').forEach(v=>v.classList.remove('on'));
+  document.getElementById('v-'+n.dataset.v).classList.add('on');
+}});
+</script>
+</body></html>
+"""
+
+
 def render_html(
     metrics: dict,
     metadata: dict,
@@ -2643,10 +3372,9 @@ def render_html(
         indent=2,
         default=str,
     )
-    kg_section = render_knowledge_graph_section(
-        graph or {"nodes": [], "edges": []},
-        metrics=metrics,
-        metadata=metadata,
+    kg_section = (
+        '<p class="meta" id="knowledge-graph">Vault note graph is not the code map. '
+        "Open the Code graph (OKF) via <code>python3 scripts/code-xray.py --html --open</code>.</p>"
     )
 
     html = f"""<!DOCTYPE html>
@@ -2700,12 +3428,9 @@ def render_html(
   <nav style="position:sticky;top:0;z-index:20;background:#0f172acc;backdrop-filter:blur(8px);
     border-bottom:1px solid #1e293b;margin:0 -8px 16px;padding:10px 8px;display:flex;gap:14px;
     flex-wrap:wrap;align-items:center;font-size:14px;">
-    <a href="#overview" style="color:#e2e8f0;text-decoration:none;font-weight:600;">🪶 Overview</a>
-    <a href="#code-tree" style="color:#7dd3fc;text-decoration:none;">🌳 Code Tree</a>
-    <a href="#costs" style="color:#7dd3fc;text-decoration:none;">💰 Costs</a>
-    <a href="#knowledge-graph" style="color:#7dd3fc;text-decoration:none;">🕸 Knowledge</a>
-    <a href="#guards" style="color:#7dd3fc;text-decoration:none;">🛡 Guards</a>
-    <a href="#recommendations" style="color:#7dd3fc;text-decoration:none;">💡 Recs</a>
+    <a href="#code-graph" style="color:#e2e8f0;text-decoration:none;font-weight:600;">🕸 Graph</a>
+    <a href="#overview" style="color:#7dd3fc;text-decoration:none;">Overview</a>
+    <a href="#costs" style="color:#7dd3fc;text-decoration:none;">Costs</a>
     <details style="margin-left:auto;position:relative;">
       <summary style="cursor:pointer;color:#94a3b8;list-style:none;">Advanced ▾</summary>
       <div style="position:absolute;right:0;top:24px;background:#1e293b;border:1px solid #334155;
@@ -2905,62 +3630,33 @@ def render_html(
   </div>"""
     html = html.replace("%%STATUS_STRIP%%", status_strip)
 
-    # ── Code Tree section: repo-aware switcher next to the knowledge graph ──
-    # Kick off tree builds for active repos with local clones (async, fail-soft).
-    ct_script = Path(__file__).resolve().parent / "xray.py"
-    for _t, pname, _st, active_30d in repo_entries:
-        if not active_30d or not ct_script.exists():
-            continue
-        lp = resolve_local_path(pname, "")
-        if lp and Path(lp, ".git").exists() and not (VAULT / "dashboard" / "trees" / f"{Path(lp).name}.html").exists():
-            try:
-                subprocess.Popen(
-                    [sys.executable, str(ct_script), "--repo", lp, "--build", "--html"],
-                    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True,
-                )
-            except Exception:
-                pass
-    tree_pages = sorted(p.name for p in (VAULT / "dashboard" / "trees").glob("*.html"))
+    # Graph = this repo only. Other trees/*.html are legacy mind-maps — do not offer them.
+    tree_pages = [p.name for p in (VAULT / "dashboard" / "trees").glob("*.html")]
     cur_repo_name = metadata.get("project") or "raven"
-    default_tree = f"{cur_repo_name}.html"
-    if default_tree not in tree_pages:
-        matches = [p for p in tree_pages if p.lower() == default_tree.lower()]
-        default_tree = matches[0] if matches else default_tree
-        pass
-    tree_opts = "".join(
-        f"<option value='trees/{p}' {'selected' if p == default_tree else ''}>{p.replace('.html','')}</option>"
-        for p in tree_pages
-    ) or f"<option value='' selected>no trees built</option>"
+    want = cur_repo_name.lower().removesuffix(".html")
+    default_tree = ""
+    for p in tree_pages:
+        if p.lower().removesuffix(".html") == want:
+            default_tree = p
+            break
+    if not default_tree:
+        folder = Path(metadata.get("project_path") or ".").name.lower()
+        for p in tree_pages:
+            if p.lower().removesuffix(".html") == folder:
+                default_tree = p
+                break
+    iframe_src = f"trees/{default_tree}" if default_tree else ""
+    missing_display = "none" if default_tree else "inline"
     code_tree_section = f"""
-  <details open id="code-tree" style="background:#1e3a5f;border-radius:8px;margin:14px 0;">
-    <summary style="color:#bfdbfe;padding:10px 14px;font-size:14px;cursor:pointer;">
-      🌳 <strong>Code Tree</strong> — repo:
-      <select id="treeRepo" onclick="event.stopPropagation()" onchange="openCodeTree(this.value)"
-        style="background:#0f2440;color:#bfdbfe;border:1px solid #334155;border-radius:4px;padding:2px 6px;">{tree_opts}</select>
-      <span style="color:#93c5fd;">(zoom with scroll · drag to pan · click folders)</span> ·
-      <a id="treeFull" href="trees/{default_tree}" style="color:#93c5fd;" onclick="event.stopPropagation()">Open full page ↗</a>
-      <span id="treeMissing" style="color:#fbbf24;display:none;">— no tree built for this repo yet</span>
-    </summary>
-    <iframe id="treeFrame" src="trees/{default_tree}" style="width:100%;height:640px;border:0;border-radius:0 0 8px 8px;background:#12161c;"
-      title="Raven Code Tree"></iframe>
-  </details>
-  <script>
-    var TREE_PAGES = {json.dumps(tree_pages)};
-    function openCodeTree(sel, noScroll) {{
-      var page = sel.endsWith('.html') ? sel.replace(/^trees\//,'') : (sel + '.html');
-      var hit = TREE_PAGES.find(function(x){{ return x.toLowerCase() === page.toLowerCase(); }});
-      if (hit) page = hit;
-      var missing = !hit;
-      document.getElementById('treeMissing').style.display = missing ? '' : 'none';
-      if (missing) return;
-      document.getElementById('treeFrame').src = 'trees/'+page;
-      document.getElementById('treeFull').href = 'trees/'+page;
-      var dd = document.getElementById('treeRepo');
-      if (dd && dd.value !== 'trees/'+page) dd.value = 'trees/'+page;
-      document.getElementById('code-tree').open = true;
-      if (!noScroll) document.getElementById('code-tree').scrollIntoView({{behavior:'smooth', block:'start'}});
-    }}
-  </script>"""
+  <div id="code-graph" style="background:#0f172a;border-radius:8px;margin:14px 0;border:1px solid #334155;">
+    <div style="color:#e2e8f0;padding:10px 14px;font-size:14px;">
+      <strong>Graph</strong>
+      <span style="color:#94a3b8;"> — {cur_repo_name} (this repo only)</span>
+      <span id="treeMissing" style="color:#fbbf24;display:{missing_display};"> — no OKF graph for this repo yet; run code-xray.py --html</span>
+    </div>
+    <iframe id="treeFrame" src="{iframe_src}" style="width:100%;height:72vh;border:0;border-radius:0 0 8px 8px;background:#020617;"
+      title="Code graph"></iframe>
+  </div>"""
     html = html.replace("%%CODE_TREE_SECTION%%", code_tree_section)
 
     # Bibliography HTML
@@ -2993,9 +3689,8 @@ def render_html(
       <strong>working memory</strong> — not a separate analytics product.
     </p>
     <ol style="margin:0 0 0 18px;color:#cbd5e1;">
-      <li style="margin-bottom:8px;"><strong>SessionStart</strong> — <code>vault-load.py</code> injects a short digest
-        (hub current state, open questions, last session summaries, recent decisions) into agent context
-        {c5}. Agents do <em>not</em> dump multi‑MB vault files into the prompt.</li>
+      <li style="margin-bottom:8px;"><strong>Session start</strong> — <code>ide-boot.py</code> sets <code>load=0|1</code>;
+        if 1, the agent Reads <code>.raven/memory/CARD.md</code> only {c5}. No vault-load inject. No graph JSON in context.</li>
       <li style="margin-bottom:8px;"><strong>During coding</strong> — Andie / specialists route work; guards scan writes;
         model-router may record overhead into <code>.model-session.json</code> {c3}.</li>
       <li style="margin-bottom:8px;"><strong>Session end (Stop)</strong> — <code>token-meter-write</code> → metrics {c1};
@@ -3513,9 +4208,16 @@ def main():
                 )
                 age_minutes = (datetime.now() - generated_at).total_seconds() / 60
                 if age_minutes < args.if_stale:
-                    # Fresh enough — skip the rebuild silently (this is the
-                    # common case when called from a Stop hook every turn).
-                    return
+                    nu = VAULT / "dashboard" / RAVEN_DASHBOARD_NAME
+                    idx = VAULT / "dashboard" / "index.html"
+                    try:
+                        body = idx.read_text(errors="replace") if idx.is_file() else ""
+                        if (not nu.is_file()) or "treeSel" in body:
+                            print("dashboard: forcing rebuild (legacy index or missing raven-dashboard.html)", file=sys.stderr)
+                        else:
+                            return
+                    except OSError:
+                        return
         except Exception:
             pass  # missing/corrupt stamp — fall through and build
 
@@ -3563,11 +4265,12 @@ def main():
             days = 30  # fail-soft for hooks (do not exit 2)
 
     graph = None
-    if args.html or args.all or args.graph_only or args.graph_json:
+    # Landing HTML uses xray OKF only. Vault knowledge_graph.py is NOT this page.
+    if args.graph_only or args.graph_json:
         try:
             graph = _load_or_build_graph(project_filter=project_filter, session_days=days)
         except Exception as e:
-            print(f"dashboard: graph build failed (continuing): {e}", file=sys.stderr)
+            print(f"dashboard: vault graph build failed (continuing): {e}", file=sys.stderr)
             graph = {"nodes": [], "edges": []}
         if args.graph_json and not (args.html or args.graph_only or args.all):
             print(
@@ -3601,51 +4304,18 @@ def main():
 
     if args.html or args.all:
         VAULT.mkdir(parents=True, exist_ok=True)
-        html_out = render_html(metrics, metadata, recs, graph=graph)
-        # New shell (dashboard/index.html) + legacy detail page + redirect stub
-        import render as shell_render
-        index_path = shell_render.write_index(metrics, metadata)
-        legacy_path = shell_render.OUT_DIR / "legacy.html"
-        tmp = legacy_path.with_suffix(".html.tmp")
-        tmp.write_text(html_out)
-        tmp.replace(legacy_path)
-        # Remove legacy dual-file names (never delete dashboard.html itself).
-        # dashboard-kg.html used to be in this cleanup list, but it's now the
-        # deliberate fixed-name snapshot written below — no longer legacy.
-        for legacy_name in ("OPEN-GRAPH.html",):
-            lp = VAULT / legacy_name
-            try:
-                if lp.is_file():
-                    lp.unlink()
-            except OSError:
-                pass
-        # Fixed-name snapshot alongside dashboard.html — same content, stable
-        # filename across versions (PLUGIN_VERSION is shown inside the page's
-        # meta tag/footer instead of the filename). Overwritten on every
-        # rebuild, so it always reflects whatever version last ran.
-        versioned_path = VAULT / "dashboard-kg.html"
-        vtmp = versioned_path.with_suffix(".html.tmp")
-        vtmp.write_text(html_out)
-        vtmp.replace(versioned_path)
+        dashboard_path = write_raven_dashboard(metadata, metrics)
         stamp = {
-            "build": "kg-v2-grounded+cite",
+            "build": "raven-dashboard-okf-v1",
             "generated_at": metadata.get("report_generated_at_local"),
-            "path": str(index_path),
-            "versioned_path": str(versioned_path),
+            "path": str(dashboard_path),
             "plugin_version": PLUGIN_VERSION,
-            "bytes": len(html_out),
-            "graph_nodes": len((graph or {}).get("nodes") or []),
-            "graph_edges": len((graph or {}).get("edges") or []),
         }
         (VAULT / "dashboard-stamp.json").write_text(json.dumps(stamp, indent=2) + "\n")
-        print(
-            f"🌐 HTML dashboard: {index_path} (legacy detail: dashboard/legacy.html, "
-            f"nodes={stamp['graph_nodes']})",
-            file=sys.stderr,
-        )
-        if args.open:
+        print(f"🌐 HTML dashboard: {dashboard_path}", file=sys.stderr)
+        if args.open and os.environ.get("RAVEN_DASHBOARD_NO_OPEN") != "1":
             try:
-                subprocess.run(["open", str(index_path)], check=False)
+                subprocess.run(["open", str(dashboard_path)], check=False)
             except Exception:
                 pass
 

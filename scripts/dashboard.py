@@ -1,8 +1,5 @@
 #!/usr/bin/env python3
-"""Back-compat shim — dashboard code lives in scripts/dashboard/ package.
-
-Hooks, symlink mirrors, and registry-sync reference this path; keep it thin.
-"""
+"""Back-compat shim — dashboard lives in scripts/dashboard/core.py."""
 import pathlib
 import runpy
 import sys

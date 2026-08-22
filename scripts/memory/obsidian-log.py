@@ -35,6 +35,9 @@ from vault_common import (  # noqa: E402
     RAW_SESSIONS,
     run,
     ensure_dirs,
+    write_memory_card,
+    maybe_rotate_sessions,
+    manifest_project_name,
 )
 
 MAX_ENTRY_LINES = 80
@@ -216,6 +219,23 @@ tags: [session, raven]
 
     update_hub_recent_session(project, f"sessions/{date}-{project}", timestamp)
     rebuild_index(last_session=f"{date}-{project}", timestamp=timestamp)
+
+    # Agent start surface — in-repo card. Must succeed independently of rotation.
+    try:
+        root = pathlib.Path(os.environ.get("CLAUDE_PROJECT_DIR") or ".").resolve()
+        write_memory_card(
+            root,
+            session_id=session_id,
+            project=manifest_project_name(root) or project,
+        )
+        print("   Memory card: .raven/memory/CARD.md")
+    except Exception as card_err:
+        print(f"   Memory card write failed: {card_err}", file=sys.stderr)
+
+    try:
+        maybe_rotate_sessions()
+    except Exception as rot_err:
+        print(f"   session rotation skipped: {rot_err}", file=sys.stderr)
 
     # Fail-soft knowledge extract
     extract = _SCRIPT_DIR / "knowledge-extract.py"

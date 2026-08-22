@@ -75,43 +75,92 @@ def render_html_with_refresh() -> str:
     return html
 
 
+VAULT_DASH = pathlib.Path.home() / "RavenVault" / "dashboard"
+_SCRIPTS = pathlib.Path(__file__).resolve().parents[1]
+if str(_SCRIPTS / "dashboard") not in sys.path:
+    sys.path.insert(0, str(_SCRIPTS / "dashboard"))
+
+
 class DashboardRequestHandler(http.server.SimpleHTTPRequestHandler):
     """HTTP handler for dashboard server."""
+
+    def _cors(self) -> None:
+        self.send_header("Access-Control-Allow-Origin", "*")
+        self.send_header("Access-Control-Allow-Methods", "GET,POST,OPTIONS")
+        self.send_header("Access-Control-Allow-Headers", "Content-Type")
+
+    def do_OPTIONS(self) -> None:
+        self.send_response(204)
+        self._cors()
+        self.end_headers()
+
+    def do_POST(self) -> None:
+        path = urllib.parse.urlparse(self.path).path
+        if path != "/api/settings":
+            self.send_response(404)
+            self.end_headers()
+            return
+        n = int(self.headers.get("Content-Length") or 0)
+        raw = self.rfile.read(n) if n else b"{}"
+        try:
+            patch = json.loads(raw.decode() or "{}")
+            from dash_settings import save
+            out = save(patch)
+            body = json.dumps({"ok": True, "settings": out}).encode()
+            self.send_response(200)
+        except Exception as e:
+            body = json.dumps({"ok": False, "error": str(e)}).encode()
+            self.send_response(400)
+        self.send_header("Content-type", "application/json")
+        self._cors()
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
 
     def do_GET(self) -> None:
         """Handle GET requests."""
         path = urllib.parse.urlparse(self.path).path
 
-        if path == "/":
-            # Serve main dashboard HTML
+        if path in ("/", "/raven-dashboard.html"):
+            target = VAULT_DASH / "raven-dashboard.html"
             self.send_response(200)
             self.send_header("Content-type", "text/html; charset=utf-8")
+            self._cors()
             self.end_headers()
-            html = render_html_with_refresh()
-            self.wfile.write(html.encode())
+            self.wfile.write(target.read_bytes() if target.is_file() else b"missing raven-dashboard.html")
+            return
 
-        elif path == "/refresh":
-            # Regenerate metrics and return JSON
+        if path == "/api/settings":
+            from dash_settings import public_view
+            body = json.dumps(public_view()).encode()
+            self.send_response(200)
+            self.send_header("Content-type", "application/json")
+            self._cors()
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+            return
+
+        if path == "/refresh":
             data = run_dashboard_script()
             self.send_response(200)
             self.send_header("Content-type", "application/json")
+            self._cors()
             self.end_headers()
             self.wfile.write(json.dumps(data).encode())
+            return
 
-        elif path == "/metrics.json":
-            # Raw metrics
-            data = run_dashboard_script()
+        rel = path.lstrip("/")
+        fpath = (VAULT_DASH / rel).resolve()
+        if str(fpath).startswith(str(VAULT_DASH.resolve())) and fpath.is_file():
             self.send_response(200)
-            self.send_header("Content-type", "application/json")
+            self._cors()
             self.end_headers()
-            self.wfile.write(json.dumps(data).encode())
-
-        else:
-            # 404
-            self.send_response(404)
-            self.send_header("Content-type", "text/plain")
-            self.end_headers()
-            self.wfile.write(b"Not found")
+            self.wfile.write(fpath.read_bytes())
+            return
+        self.send_response(404)
+        self.end_headers()
+        self.wfile.write(b"Not found")
 
     def log_message(self, format: str, *args) -> None:
         """Suppress default logging."""

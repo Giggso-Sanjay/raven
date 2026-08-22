@@ -1,14 +1,15 @@
 #!/usr/bin/env python3
 """
-vault-load.py — SessionStart digest for agents (Claude + Grok).
+vault-load.py — optional manual vault digest (NOT SessionStart).
+TRACKED: docs/DEPRECATIONS.md — keep as CLI; never re-wire to SessionStart.
 
-Prints a short curated digest (hub + open questions + last sessions + decisions).
-Optional --json for structured additionalContext hooks.
+Agent boot Reads .raven/memory/CARD.md instead. Keep this CLI for humans
+who explicitly want a capped vault dump.
 
 Usage:
   python3 vault-load.py
   python3 vault-load.py --project raven
-  python3 vault-load.py --hook   # Claude SessionStart JSON {additionalContext}
+  python3 vault-load.py --hook   # JSON {additionalContext} — unused at boot
 """
 from __future__ import annotations
 

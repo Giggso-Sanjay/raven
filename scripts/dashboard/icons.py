@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """
 kg_icons.py — tiny SVG icons for Raven knowledge graph (vibe-coder UI).
+TRACKED: docs/DEPRECATIONS.md — vault KG icons only; do not delete this version.
 
 Icons ship in assets/kg-icons/*.svg and are inlined as data-URIs so
 file:// dashboards work offline with no CDN.
@@ -22,6 +23,9 @@ TYPE_ICONS = {
     "decision": "decision",
     "session": "session",
     "overview": "workflow",
+    "commit": "commit",
+    "file": "code",
+    "symbol": "code",
     "unknown": "unknown",
 }
 
@@ -59,6 +63,7 @@ EMOJI = {
     "data": "📊",
     "workflow": "🔄",
     "code": "💻",
+    "commit": "🟣",
     "unknown": "❓",
 }
 
@@ -77,6 +82,7 @@ LEGEND = [
     ("cloud", "Cloud / deploy"),
     ("workflow", "Pipeline / flow"),
     ("code", "Code / module"),
+    ("commit", "Git commit"),
     ("data", "Data / metrics"),
     ("unknown", "Not labeled yet"),
 ]
@@ -151,6 +157,9 @@ def resolve_icon_key(
         ex = str(explicit).strip().lower().replace(".svg", "")
         if load_svg(ex) or ex in EMOJI:
             return ex
+    nt = (ntype or "").lower()
+    if nt in TYPE_ICONS:
+        return TYPE_ICONS[nt]
     blob = " ".join(
         [
             ntype or "",
@@ -163,7 +172,7 @@ def resolve_icon_key(
     for rx, key in KEYWORD_ICONS:
         if rx.search(blob):
             return key
-    return TYPE_ICONS.get((ntype or "").lower(), "unknown")
+    return TYPE_ICONS.get(nt, "unknown")
 
 
 def enrich_node(node: dict) -> dict:

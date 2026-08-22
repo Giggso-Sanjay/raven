@@ -32,6 +32,8 @@ __pycache__/
 .env
 .raven/.cache/
 .raven/state/
+.raven/memory/CARD.md
+.raven/memory/CARD.md.tmp
 .raven/.model-session.json
 .raven/.token-meter-checkpoint.json
 .raven/xray.json
@@ -40,8 +42,15 @@ __pycache__/
 .raven/.push-mode
 .raven/.push-approved
 .raven/.push-notice-shown
+.raven/educate.json
+.raven/.dashboard-opened
 .raven/dashboard-link.md
 .raven/cost-log.jsonl
+.raven/model-pricing.local.json
+.raven/.last-turn-cost.json
+.raven/turn-log.jsonl
+.raven/.route-stamp
+.raven/dashboard-settings.json
 scripts/.raven/
 
 # Raven cross-team handoff docs — local artifact, share manually, don't commit

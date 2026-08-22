@@ -5,6 +5,8 @@ adds an entry here (newest first), and must pass `scripts/check-version-consiste
 (CI: `raven-version-consistency-check`). Historical changelogs in `docs/` are
 never rewritten — this file is the roll-up index.
 
+**Unreleased (2026-08-22):** Agent boot is `ide-boot.py` + `.raven/memory/CARD.md`. `vault-load` is not a SessionStart hook. Hosts: Claude, Grok, Codex, Cursor, AntiGravity, Windsurf, Replit, Gemini CLI. Dead/shim files tracked in `docs/DEPRECATIONS.md` (not deleted).
+
 ---
 
 ## v5.0.0 — 2026-08-07 — Discipline Fix Chain (major)
