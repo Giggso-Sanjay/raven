@@ -27,12 +27,14 @@ echo "Raven host glue → $TARGET"
 [[ -f "$HOSTS/antigravity/agents.md" ]] && copy "$HOSTS/antigravity/agents.md" "$TARGET/.agents/AGENTS.md"
 [[ -f "$HOSTS/cursor/raven-router.mdc" ]] && copy "$HOSTS/cursor/raven-router.mdc" "$TARGET/.cursor/rules/raven-router.mdc"
 [[ -f "$HOSTS/windsurf/ide-boot.md" ]] && copy "$HOSTS/windsurf/ide-boot.md" "$TARGET/.windsurf/rules/ide-boot.md"
+[[ -f "$HOSTS/vscode/raven-router.md" ]] && copy "$HOSTS/vscode/raven-router.md" "$TARGET/.vscode/raven-router.md"
+[[ -f "$HOSTS/github/copilot-instructions.md" ]] && copy "$HOSTS/github/copilot-instructions.md" "$TARGET/.github/copilot-instructions.md"
 if [[ -f "$HOSTS/claude/settings.json" ]]; then
   mkdir -p "$TARGET/.claude"
   if [[ ! -f "$TARGET/.claude/settings.json" ]]; then
     copy "$HOSTS/claude/settings.json" "$TARGET/.claude/settings.json"
   else
-    echo "  skip $TARGET/.claude/settings.json (already exists — merge hooks manually)"
+    echo "  keep $TARGET/.claude/settings.json — must include model-router.py --hook (stdin), not --prompt \$PROMPT"
   fi
 fi
 if [[ -d "$ROOT/scripts" ]]; then

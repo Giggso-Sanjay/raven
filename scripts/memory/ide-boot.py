@@ -119,6 +119,12 @@ def route(env: dict | None = None, root: Path | None = None) -> dict:
         edu = _edu_mod.load_mode(root)
     except Exception:
         edu = "guided"
+    tiers = (hosts.get(host) or {}).get("tiers") or {}
+    expected = (
+        f"SIMPLE→{tiers.get('SIMPLE', '')} "
+        f"MEDIUM→{tiers.get('MEDIUM', '')} "
+        f"COMPLEX→{tiers.get('COMPLEX', '')}"
+    ).strip()
     return {
         "host": host,
         "rules": rules,
@@ -129,6 +135,8 @@ def route(env: dict | None = None, root: Path | None = None) -> dict:
         "graph_cli": boot.get("graph_cli") or "python3 scripts/code-xray.py",
         "mcp": ",".join(boot.get("mcp_graph") or []),
         "educate": edu,
+        "route": "bash scripts/raven-python.sh scripts/routing/model-router.py --prompt",
+        "expected_route": expected,
     }
 
 
@@ -243,6 +251,8 @@ def main() -> int:
         print(f"graph_cli={r.get('graph_cli','')}")
         print(f"mcp={r.get('mcp','')}")
         print(f"educate={r.get('educate','guided')}")
+        print(f"route={r.get('route','')}")
+        print(f"expected_route={r.get('expected_route','')}")
     marker = _marker(ROOT)
     should_rebuild = session_start or force_open
     if should_rebuild:

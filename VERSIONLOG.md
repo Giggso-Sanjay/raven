@@ -5,6 +5,17 @@ adds an entry here (newest first), and must pass `scripts/check-version-consiste
 (CI: `raven-version-consistency-check`). Historical changelogs in `docs/` are
 never rewritten — this file is the roll-up index.
 
+## v5.5.1 — 2026-08-23 — Host router + educate on every IDE (patch)
+
+Fixes silent routing on Claude (wrong hook JSON key / `$PROMPT`) and honor-system
+educated-push on Grok/Codex/Cursor/AntiGravity/Windsurf/VS Code. Session start
+prints version, educate mode, and expected SIMPLE/MEDIUM/COMPLEX models. Toast
+adds `educate=` and `expected=`. Tag `v5.5.1` is the install pin (5.5.0 lived on
+main without a tag). `install-user-claude-hooks.py` rewires `~/.claude` to
+`model-router.py --hook` and the deny-mode push-gate.
+
+---
+
 ## v5.5.0 — 2026-08-22 — One plugin, every host (major)
 
 Single artifact `plugin/raven-plugin-v5.5.0.zip`. Version is `raven-core/VERSION`.

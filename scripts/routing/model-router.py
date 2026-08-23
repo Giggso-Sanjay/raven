@@ -166,6 +166,21 @@ def detect_host(env: Optional[Dict] = None) -> str:
     return "unknown"
 
 
+def _educate_mode() -> str:
+    try:
+        edu = _find_project_root() / ".raven" / "educate.json"
+        if not edu.is_file():
+            return "guided"
+        data = json.loads(edu.read_text(encoding="utf-8"))
+        mode = data if isinstance(data, str) else (data or {}).get("mode")
+        mode = str(mode or "guided").strip().lower()
+        if mode in ("auto", "lucky", "off"):
+            return "off"
+        return "guided"
+    except Exception:
+        return "guided"
+
+
 def format_turn_toast(tier: str, model: str, reasons: List[str], host: str = "", prompt_chars: int = 0) -> str:
     """One line every turn: host, tier, recommend, why, applied=false."""
     host = host or detect_host()
@@ -184,9 +199,11 @@ def format_turn_toast(tier: str, model: str, reasons: List[str], host: str = "",
         money = start_money_line(model, prompt_chars or 0)
     except Exception:
         money = "💰 total-cost=? last_turn=? est=?"
+    edu = _educate_mode()
     return (
         f"🔀 Router · host={host} · {tier} → recommend {model} "
-        f"· why: {why} · applied=false until spawn{spawn}\n{money}"
+        f"· why: {why} · applied=false until spawn{spawn}\n{money}\n"
+        f"educate={edu} expected={model}"
     )
 
 
@@ -454,12 +471,24 @@ def main():
         if args.session_start:
             state = arm_base_router()
             host = state.get("backend") or detect_host()
-            rec = _load_model_env(host).get("SIMPLE", "")
+            models = _load_model_env(host)
+            edu = _educate_mode()
+            ver = "5.5.1"
+            try:
+                vp = _find_project_root() / "raven-core" / "VERSION"
+                if vp.is_file():
+                    ver = vp.read_text(encoding="utf-8").strip() or ver
+            except OSError:
+                pass
             print(
-                "🔀 Raven base router: ON (mandatory this session). "
-                f"host={host} SIMPLE→recommend {rec} if self-contained. "
-                "applied=false until this IDE swaps (LiteLLM not wired). "
-                "/router off opts out until the next SessionStart."
+                f"🪶 Raven v{ver} session start · host={host} · educate={edu}\n"
+                f"expected route: SIMPLE→{models.get('SIMPLE','')} "
+                f"MEDIUM→{models.get('MEDIUM','')} "
+                f"COMPLEX→{models.get('COMPLEX','')}\n"
+                "🔀 Base router ON (mandatory). First user turn: "
+                "bash scripts/raven-python.sh scripts/routing/model-router.py --prompt \"…\"\n"
+                "applied=false until this IDE spawns/swaps. "
+                "guided = briefing then go-ahead before writes."
             )
             return 0
         state = load_router_state()
@@ -504,8 +533,12 @@ def main():
             payload.get("prompt")
             or payload.get("userMessage")
             or payload.get("message")
+            or payload.get("user_message")
+            or payload.get("text")
             or ""
         )
+        if not args.prompt and isinstance(payload.get("content"), str):
+            args.prompt = payload.get("content") or ""
         hook_session_id = payload.get("session_id", "") or ""
         if not args.context:
             extra = payload.get("additionalContext")

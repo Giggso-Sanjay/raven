@@ -1,6 +1,6 @@
-# Raven Plugin — v5.5.0
+# Raven Plugin — v5.5.1
 
-**One plugin.** File: `raven-plugin-v5.5.0.zip` (built by `bash plugin/make-plugin.sh`).
+**One plugin.** File: `raven-plugin-v5.5.1.zip` (built by `bash plugin/make-plugin.sh`).
 
 Not Claude-Desktop-only. The zip contains Claude’s `.claude-plugin/` loader **and** `hosts/` + `install-host.sh` for Grok, Codex, Cursor, AntiGravity, Windsurf, Replit, and Gemini CLI. Details: [HOSTS.md](HOSTS.md).
 

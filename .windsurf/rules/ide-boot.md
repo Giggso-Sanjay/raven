@@ -1,1 +1,1 @@
-BEFORE any reply: `python3 scripts/routing/model-router.py --prompt "<message>"`. Line 1 = `🔀 Router`. Line 2 = `session=<model>`. Line 3 = `Intent: plan|debug|direct — {why}`. Then work. First load: `ide-boot.py`. **raven dashboard** → `--open`. Educate guided until go-ahead.
+BEFORE any reply: `python3 scripts/routing/model-router.py --prompt "<message>"`. Print 🔀, 💰, educate=, expected=, session=, Intent:. First load: `ide-boot.py` and `model-router.py --session-start`. **raven dashboard** → `--open`. Educate guided: briefing then STOP until go-ahead.

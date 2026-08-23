@@ -91,6 +91,16 @@
         "COMPLEX": "gemini-pro",
         "LOCAL_ONLY": "ollama/dolphin-mistral"
       }
+    },
+    "vscode": {
+      "env_any": ["VSCODE_PID", "VSCODE_INJECTION", "VSCODE_CWD", "VSCODE_NLS_CONFIG"],
+      "rules": "AGENTS.md",
+      "tiers": {
+        "SIMPLE": "vscode-fast",
+        "MEDIUM": "vscode",
+        "COMPLEX": "vscode-high",
+        "LOCAL_ONLY": "ollama/dolphin-mistral"
+      }
     }
   }
 }

@@ -23,7 +23,7 @@ import re
 import sys
 from pathlib import Path
 
-REPO = Path(__file__).resolve().parent.parent
+REPO = Path(__file__).resolve().parents[2]
 CANONICAL = REPO / ".claude" / "settings.json"
 
 # Plugin-only hooks that do NOT exist in the canonical local config, kept by

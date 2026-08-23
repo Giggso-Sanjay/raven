@@ -5,6 +5,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_DIR="$(dirname "$SCRIPT_DIR")"
+VERSION="5.5.1"
 VERSION="$(tr -d '[:space:]' < "$REPO_DIR/raven-core/VERSION")"
 ZIP_NAME="raven-plugin-v${VERSION}.zip"
 ZIP_PATH="$SCRIPT_DIR/$ZIP_NAME"
@@ -52,7 +53,7 @@ if [[ -d "$REPO_DIR/assets/kg-icons" ]]; then
 fi
 
 # Host glue — same zip, not Claude-only
-mkdir -p "$TMP_DIR/hosts/cursor" "$TMP_DIR/hosts/windsurf" "$TMP_DIR/hosts/antigravity" "$TMP_DIR/hosts/claude"
+mkdir -p "$TMP_DIR/hosts/cursor" "$TMP_DIR/hosts/windsurf" "$TMP_DIR/hosts/antigravity" "$TMP_DIR/hosts/claude" "$TMP_DIR/hosts/vscode" "$TMP_DIR/hosts/github"
 cp "$REPO_DIR/AGENTS.md" "$TMP_DIR/hosts/AGENTS.md"
 cp "$REPO_DIR/CLAUDE.md" "$TMP_DIR/hosts/CLAUDE.md"
 cp "$REPO_DIR/GEMINI.md" "$TMP_DIR/hosts/GEMINI.md" 2>/dev/null || true
@@ -62,6 +63,8 @@ cp "$REPO_DIR/scripts/raven-python.sh" "$TMP_DIR/scripts/raven-python.sh"
 chmod +x "$TMP_DIR/scripts/raven-python.sh"
 cp "$REPO_DIR/.cursor/rules/raven-router.mdc" "$TMP_DIR/hosts/cursor/raven-router.mdc" 2>/dev/null || true
 cp "$REPO_DIR/.windsurf/rules/ide-boot.md" "$TMP_DIR/hosts/windsurf/ide-boot.md" 2>/dev/null || true
+cp "$REPO_DIR/.vscode/raven-router.md" "$TMP_DIR/hosts/vscode/raven-router.md" 2>/dev/null || true
+cp "$REPO_DIR/.github/copilot-instructions.md" "$TMP_DIR/hosts/github/copilot-instructions.md" 2>/dev/null || true
 cp "$REPO_DIR/.claude/settings.json" "$TMP_DIR/hosts/claude/settings.json"
 cp "$SCRIPT_DIR/install-host.sh" "$TMP_DIR/install-host.sh"
 chmod +x "$TMP_DIR/install-host.sh"

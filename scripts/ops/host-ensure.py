@@ -44,9 +44,15 @@ def ensure() -> list[str]:
     boot_dst = TARGET / ".raven" / "boot.json"
     if boot_src.is_file() and not boot_dst.is_file():
         done.append(_copy(boot_src, boot_dst))
-    cur = ENGINE / ".cursor" / "rules" / "raven-router.mdc"
-    if cur.is_file() and not (TARGET / ".cursor" / "rules" / "raven-router.mdc").is_file():
-        done.append(_copy(cur, TARGET / ".cursor" / "rules" / "raven-router.mdc"))
+    copies = [
+        (ENGINE / ".cursor" / "rules" / "raven-router.mdc", TARGET / ".cursor" / "rules" / "raven-router.mdc"),
+        (ENGINE / ".windsurf" / "rules" / "ide-boot.md", TARGET / ".windsurf" / "rules" / "ide-boot.md"),
+        (ENGINE / ".vscode" / "raven-router.md", TARGET / ".vscode" / "raven-router.md"),
+        (ENGINE / ".github" / "copilot-instructions.md", TARGET / ".github" / "copilot-instructions.md"),
+    ]
+    for src, dest in copies:
+        if src.is_file() and not dest.is_file():
+            done.append(_copy(src, dest))
     return done
 
 

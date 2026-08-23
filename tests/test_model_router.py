@@ -36,7 +36,7 @@ class TestBaseRouter(unittest.TestCase):
             self.assertEqual(st["mode"], "router")
             disk = json.loads(p.read_text())
             self.assertEqual(disk["mode"], "router")
-            self.assertIn(disk.get("backend"), ("claude", "grok", "codex", "unknown", "cursor", "antigravity", "windsurf", "replit", "gemini"))
+            self.assertIn(disk.get("backend"), ("claude", "grok", "codex", "unknown", "cursor", "antigravity", "windsurf", "replit", "gemini", "vscode"))
 
     def test_simple_hook_text_is_must_not_advisory(self):
         src = (ROOT / "scripts" / "routing" / "model-router.py").read_text()
@@ -61,6 +61,15 @@ class TestBaseRouter(unittest.TestCase):
         self.assertIn("applied=false", line)
         self.assertIn("why:", line)
         self.assertIn("total-cost=", line)
+        self.assertIn("educate=", line)
+        self.assertIn("expected=grok-4.6", line)
+
+    def test_hook_prompt_key_not_userMessage_only(self):
+        src = (ROOT / "scripts" / "routing" / "model-router.py").read_text()
+        self.assertIn('payload.get("prompt")', src)
+        self.assertIn('payload.get("userMessage")', src)
+        self.assertIn("--session-start", src)
+        self.assertIn("expected route", src)
 
     def test_agents_dir_detects_antigravity_without_env(self):
         with tempfile.TemporaryDirectory() as td:

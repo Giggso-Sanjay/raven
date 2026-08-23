@@ -44,6 +44,8 @@ class TestIdeBoot(unittest.TestCase):
         self.assertEqual(r["rules"], "CLAUDE.md")
         self.assertEqual(r["load"], 1)
         self.assertEqual(r.get("educate"), "guided")
+        self.assertIn("SIMPLE→", r.get("expected_route", ""))
+        self.assertIn("model-router.py", r.get("route", ""))
         self.assertTrue(r.get("dashboard", "").startswith("file://"))
         self.assertIn("#", r.get("dashboard", ""))
 
