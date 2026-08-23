@@ -12,6 +12,12 @@ Generates the Tokenomics & Usage Dashboard with a full metadata block and a rule
 
 ## How to invoke
 
+**On demand (user said "raven dashboard"):** open default browser, this repo:
+
+```bash
+python3 scripts/memory/ide-boot.py
+```
+
 ```bash
 # CLI (terminal-friendly ASCII)
 python3 .claude/scripts/dashboard.py --cli

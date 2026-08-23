@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
-"""Back-compat shim — knowledge graph lives in scripts/dashboard/graph.py."""
+"""Back-compat shim — knowledge graph lives in scripts/dashboard/graph.py.
+TRACKED FOR LATER REMOVAL: docs/DEPRECATIONS.md — do not delete this version.
+"""
 import pathlib
 import sys
 

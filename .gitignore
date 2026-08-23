@@ -49,6 +49,7 @@ __pycache__/
 .raven/model-pricing.local.json
 .raven/.last-turn-cost.json
 .raven/turn-log.jsonl
+.raven/.run-costs.json
 .raven/.route-stamp
 .raven/dashboard-settings.json
 scripts/.raven/

@@ -1,16 +1,14 @@
 # Grok + RavenVault playbook
 
+> **Current:** Grok loads `AGENTS.md`, then `python3 scripts/memory/ide-boot.py`. If `load=1`, Read `.raven/memory/CARD.md` only. Do not paste a vault-load digest at boot.
+
 Raven’s knowledge vault is host-agnostic: markdown under `~/RavenVault` plus local Python scripts.
 
 ## Session start
 
 ```bash
-python3 /path/to/raven/scripts/vault-load.py
-# or, if cwd is the raven/product repo with scripts on path:
-python3 scripts/vault-load.py --project "$(basename $(git remote get-url origin 2>/dev/null) .git)"
+python3 scripts/memory/ide-boot.py
 ```
-
-Paste or Read the digest into context. Cap is intentional (~2–4k tokens).
 
 ## Session end
 

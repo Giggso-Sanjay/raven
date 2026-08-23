@@ -5,7 +5,15 @@ adds an entry here (newest first), and must pass `scripts/check-version-consiste
 (CI: `raven-version-consistency-check`). Historical changelogs in `docs/` are
 never rewritten — this file is the roll-up index.
 
-**Unreleased (2026-08-22):** Agent boot is `ide-boot.py` + `.raven/memory/CARD.md`. `vault-load` is not a SessionStart hook. Hosts: Claude, Grok, Codex, Cursor, AntiGravity, Windsurf, Replit, Gemini CLI. Dead/shim files tracked in `docs/DEPRECATIONS.md` (not deleted).
+## v5.5.0 — 2026-08-22 — One plugin, every host (major)
+
+Single artifact `plugin/raven-plugin-v5.5.0.zip`. Version is `raven-core/VERSION`.
+`make-plugin.sh` reads that file. Zip includes Claude `.claude-plugin/` **and**
+`hosts/` + `install-host.sh` for Grok, Codex, Cursor, AntiGravity, Windsurf,
+Replit, Gemini. Engine trees `scripts/{session,routing,memory,guards,ops,dashboard}`
+are in the zip. Dashboard: Overview-first, cost by repo then IDE, graph search,
+open-file via `dashboard-server.py` `/api/open`. Host router + cost-log Stop path
+fixed for Claude JSONL (`type=assistant` / `sessionId`).
 
 ---
 

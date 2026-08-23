@@ -100,6 +100,9 @@ Run these checks in order. Output ✅ or ❌ per check.
 
   CLEARED — 2 warnings
 
+  📊 Dashboard: this project's scoped link is in .raven/dashboard-link.md
+     (one shared dashboard, filtered to this repo — no separate build)
+
 ─────────────────────────────────────────────────
 ```
 

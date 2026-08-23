@@ -544,7 +544,7 @@ def main():
             from dash_settings import load as _set_load, obs_link
             st = _set_load()
             obs_url = obs_link()
-            if st.get("langsmith_enabled"):
+            if (st.get("observability") or "off") != "off":
                 obs_run = hashlib.sha256((args.prompt or "").encode()).hexdigest()[:16]
             if st.get("airtaas_enabled") and any(
                 "security" in (x or "") or "auth" in (x or "") for x in (reasons or [])
@@ -552,6 +552,11 @@ def main():
                 redteam = "airtaas"
         except Exception:
             pass
+        _this_est = est.get("est_cost_usd")
+        try:
+            _this_est_f = float(_this_est) if _this_est is not None else 0.0
+        except (TypeError, ValueError):
+            _this_est_f = 0.0
         append_turn_log({
             "ts": datetime.utcnow().isoformat() + "Z",
             "repo": repo_name(),
@@ -561,7 +566,7 @@ def main():
             "recommend": model,
             "applied": False,
             "est_cost_usd": est.get("est_cost_usd"),
-            "total_cost_usd": running_total_usd(),
+            "total_cost_usd": round(running_total_usd() + _this_est_f, 6),
             "needs_rate": est.get("needs_rate"),
             "prompt_chars": len(args.prompt or ""),
             "why": (reasons or [])[:3],
@@ -569,6 +574,20 @@ def main():
             "obs_run_id": obs_run,
             "redteam": redteam,
         })
+        try:
+            from obs_trace import emit as _obs_emit
+            _obs_emit({
+                "obs_run_id": obs_run,
+                "repo": repo_name(),
+                "ide": detect_host(),
+                "tier": tier,
+                "recommend": model,
+                "prompt_chars": len(args.prompt or ""),
+                "est_cost_usd": est.get("est_cost_usd"),
+                "obs_url": obs_url,
+            })
+        except Exception:
+            pass
     except Exception:
         pass
 

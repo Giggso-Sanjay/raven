@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """Deprecated — raven-xray was retired 2026-08-15; Code-XRay replaces it.
+TRACKED FOR LATER REMOVAL: docs/DEPRECATIONS.md — do not delete this version.
 
-The file/why/session map: python3 scripts/code-xray.py --digest|--html
+The file/why/session map: python3 scripts/code-xray.py --html (not --digest at boot)
 """
 import pathlib
 import runpy

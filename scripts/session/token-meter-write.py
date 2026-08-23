@@ -14,38 +14,47 @@ from datetime import datetime
 from typing import Optional, Dict, Any
 
 PRICING_FILE = pathlib.Path(__file__).parent / "model-pricing.json"
-RAVEN_DIR = pathlib.Path.cwd() / ".raven"
+_ROOT = pathlib.Path(os.environ.get("CLAUDE_PROJECT_DIR") or pathlib.Path.cwd()).resolve()
+RAVEN_DIR = _ROOT / ".raven"
 VAULT_DIR = pathlib.Path.home() / "RavenVault"
 AUDIT_DIR = RAVEN_DIR / "audit"
 CHECKPOINT_FILE = RAVEN_DIR / ".token-meter-checkpoint.json"
+COST_LOG = RAVEN_DIR / "cost-log.jsonl"
 
 
 def load_checkpoint() -> Dict[str, Any]:
-    """Read the last-processed transcript position for this session.
-
-    Stop fires on every turn, not once at true session end — this hook used
-    to re-read the WHOLE transcript from line 1 every time and re-add that
-    cumulative total into the monthly rollup, so a long session compounded
-    its own totals turn after turn (this is what produced e.g. 23,527
-    "sessions" and $3,727 in a single day in old rollups). Tracking how far
-    we've already read lets each run count only its own NEW usage.
+    """Per-session line cursor. One global session_id was overwritten by the
+    next Stop and the previous transcript was summed from line 0 again.
     """
     try:
         if CHECKPOINT_FILE.exists():
-            return json.loads(CHECKPOINT_FILE.read_text())
+            data = json.loads(CHECKPOINT_FILE.read_text())
+            if isinstance(data.get("sessions"), dict):
+                return data
+            return {
+                "sessions": {
+                    str(data.get("session_id") or ""): {
+                        "last_line_index": int(data.get("last_line_index") or 0),
+                    }
+                }
+            }
     except Exception:
         pass
-    return {"session_id": "", "last_line_index": 0}
+    return {"sessions": {}}
 
 
 def write_checkpoint(session_id: str, last_line_index: int) -> None:
     try:
         RAVEN_DIR.mkdir(parents=True, exist_ok=True)
-        CHECKPOINT_FILE.write_text(json.dumps({
-            "session_id": session_id,
-            "last_line_index": last_line_index,
+        data = load_checkpoint()
+        sessions = data.setdefault("sessions", {})
+        sessions[str(session_id or "")] = {
+            "last_line_index": int(last_line_index or 0),
             "last_processed_at": datetime.utcnow().isoformat() + "Z",
-        }, indent=2))
+        }
+        data["session_id"] = session_id
+        data["last_line_index"] = last_line_index
+        CHECKPOINT_FILE.write_text(json.dumps(data, indent=2) + "\n")
     except Exception as e:
         sys.stderr.write(f"Warning: Failed to write checkpoint: {e}\n")
 
@@ -79,6 +88,19 @@ def get_cost(model: str, tokens_in: int, tokens_out: int, pricing: Dict = None) 
         if inn is not None and out is not None:
             return round((tokens_in / 1_000_000) * float(inn) + (tokens_out / 1_000_000) * float(out), 6)
     return 0.0
+
+
+def _session_id_of(msg: Dict[str, Any]) -> str:
+    return str(msg.get("session_id") or msg.get("sessionId") or "")
+
+
+def _is_assistant(msg: Dict[str, Any]) -> bool:
+    if msg.get("type") == "assistant":
+        return True
+    if msg.get("role") == "assistant":
+        return True
+    inner = msg.get("message")
+    return isinstance(inner, dict) and inner.get("role") == "assistant"
 
 
 def parse_transcript(transcript_path: str) -> Dict[str, Any]:
@@ -133,11 +155,14 @@ def parse_transcript(transcript_path: str) -> Dict[str, Any]:
                 peek = json.loads(line)
             except json.JSONDecodeError:
                 continue
-            sid = peek.get("session_id")
+            sid = _session_id_of(peek)
             if sid:
                 metrics["session_id"] = sid
-                if checkpoint.get("session_id") == sid:
-                    start_index = min(checkpoint.get("last_line_index", 0), len(all_lines))
+                prev = (checkpoint.get("sessions") or {}).get(sid) or {}
+                if prev:
+                    start_index = min(int(prev.get("last_line_index") or 0), len(all_lines))
+                elif checkpoint.get("session_id") == sid:
+                    start_index = min(int(checkpoint.get("last_line_index") or 0), len(all_lines))
                 break
 
         for line in all_lines[start_index:]:
@@ -149,16 +174,18 @@ def parse_transcript(transcript_path: str) -> Dict[str, Any]:
                     continue
 
                 try:
-                    # Extract usage from assistant messages
-                    if msg.get("role") == "assistant":
-                        usage = msg.get("message", {}).get("usage", {})
+                    # Claude Code JSONL uses type=assistant + sessionId, not role/session_id.
+                    if _is_assistant(msg):
+                        inner = msg.get("message") if isinstance(msg.get("message"), dict) else {}
+                        usage = inner.get("usage") or msg.get("usage") or {}
                         if not usage:
                             continue
 
-                        model = msg.get("message", {}).get("model", "unknown")
+                        model = inner.get("model") or msg.get("model") or "unknown"
                         metrics["model"] = model
-                        if msg.get("session_id"):
-                            metrics["session_id"] = msg["session_id"]
+                        sid = _session_id_of(msg)
+                        if sid:
+                            metrics["session_id"] = sid
 
                         input_tokens = usage.get("input_tokens", 0)
                         output_tokens = usage.get("output_tokens", 0)
@@ -475,9 +502,6 @@ def write_audit_log(metrics: Dict[str, Any]) -> bool:
         return False
 
 
-COST_LOG = RAVEN_DIR / "cost-log.jsonl"
-
-
 def _read_estimate() -> Optional[Dict[str, Any]]:
     """Pre-turn estimate from model-router's last classification, if any.
 
@@ -519,7 +543,11 @@ def write_cost_log(metrics: Dict[str, Any]) -> bool:
     """
     by_model = metrics.get("by_model") or {}
     if not by_model:
-        return True  # nothing ran this turn — no fake rows
+        sys.stderr.write(
+            "token-meter-write: no assistant usage in this transcript delta; "
+            "cost-log.jsonl not appended\n"
+        )
+        return True
 
     try:
         RAVEN_DIR.mkdir(parents=True, exist_ok=True)
@@ -595,7 +623,18 @@ def write_cost_log(metrics: Dict[str, Any]) -> bool:
             sys.stderr.write(f"Warning: turn-end cost line failed: {e}\n")
         return True
     except Exception as e:
-        sys.stderr.write(f"Warning: Failed to write cost log: {e}\n")
+        sys.stderr.write(f"token-meter-write: write_cost_log failed: {e}\n")
+        try:
+            AUDIT_DIR.mkdir(parents=True, exist_ok=True)
+            log_file = AUDIT_DIR / f"{datetime.utcnow().strftime('%Y-%m-%d')}.log"
+            with open(log_file, "a") as f:
+                f.write(json.dumps({
+                    "timestamp": datetime.utcnow().isoformat() + "Z",
+                    "event": "cost-log-write-fail",
+                    "detail": str(e),
+                }) + "\n")
+        except OSError:
+            pass
         return False
 
 
@@ -696,40 +735,85 @@ def write_cost_verify(session_id: str, transcript_path: str, timestamp: str) -> 
         sys.stderr.write(f"Warning: cost verification failed: {e}\n")
 
 
+def _read_hook_input() -> Dict[str, Any]:
+    try:
+        if sys.stdin.isatty():
+            return {}
+        raw = sys.stdin.read()
+        if not raw.strip():
+            return {}
+        data = json.loads(raw)
+        return data if isinstance(data, dict) else {}
+    except Exception as e:
+        sys.stderr.write(f"token-meter-write: stdin JSON failed: {e}\n")
+        return {}
+
+
+def _resolve_transcript(hook_input: Dict[str, Any]) -> str:
+    path = (
+        hook_input.get("transcript_path")
+        or os.environ.get("CLAUDE_TRANSCRIPT_PATH")
+        or ""
+    )
+    if path and pathlib.Path(path).is_file():
+        return str(path)
+    sid = (
+        hook_input.get("session_id")
+        or hook_input.get("sessionId")
+        or os.environ.get("CLAUDE_SESSION_ID")
+        or ""
+    )
+    if sid:
+        hits = list(pathlib.Path.home().glob(f".claude/projects/**/{sid}.jsonl"))
+        if hits:
+            return str(hits[0])
+    slug = str(_ROOT).replace("/", "-")
+    if not slug.startswith("-"):
+        slug = "-" + slug
+    folder = pathlib.Path.home() / ".claude" / "projects" / slug
+    if folder.is_dir():
+        files = sorted(folder.glob("*.jsonl"), key=lambda p: p.stat().st_mtime, reverse=True)
+        if files:
+            sys.stderr.write(
+                f"token-meter-write: no transcript_path on stdin; using newest {files[0]}\n"
+            )
+            return str(files[0])
+    return ""
+
+
 def main() -> None:
     """Read Stop hook stdin, parse transcript, write metrics."""
     try:
-        # Read hook input from stdin
-        hook_input = json.load(sys.stdin) if not sys.stdin.isatty() else {}
-    except Exception:
-        hook_input = {}
+        hook_input = _read_hook_input()
+        transcript_path = _resolve_transcript(hook_input)
+        if not transcript_path:
+            sys.stderr.write(
+                "token-meter-write: no transcript_path in hook input or env; skipping\n"
+            )
+            return
 
-    transcript_path = hook_input.get("transcript_path", "")
-    if not transcript_path:
-        sys.stderr.write("No transcript_path in hook input; skipping metrics\n")
-        return
+        metrics = parse_transcript(transcript_path)
+        metrics["project"] = _resolve_project_name()
+        new_line_count = metrics.pop("_new_line_count", 0)
 
-    # Parse transcript — only the delta since the last checkpoint
-    metrics = parse_transcript(transcript_path)
-    metrics["project"] = _resolve_project_name()
-    new_line_count = metrics.pop("_new_line_count", 0)
+        write_session_json(metrics)
+        write_monthly_rollup(metrics)
+        write_audit_log(metrics)
+        ok = write_cost_log(metrics)
+        if not ok:
+            sys.stderr.write("token-meter-write: write_cost_log failed\n")
 
-    # Write all four atomically
-    write_session_json(metrics)
-    write_monthly_rollup(metrics)
-    write_audit_log(metrics)
-    write_cost_log(metrics)
+        write_cost_verify(metrics.get("session_id", ""), transcript_path, metrics["timestamp"])
 
-    # Dual-path verification: Path A (deltas just written) vs Path B
-    # (independent full recompute). >5% disagreement = flagged UNVERIFIED.
-    write_cost_verify(metrics.get("session_id", ""), transcript_path, metrics["timestamp"])
-
-    # Only advance the checkpoint after a successful parse, so a transient
-    # read failure doesn't silently skip real usage on the next run.
-    if metrics.get("session_id"):
-        write_checkpoint(metrics["session_id"], new_line_count)
-
-    # Silent on success (hook should be non-blocking)
+        if metrics.get("session_id"):
+            write_checkpoint(metrics["session_id"], new_line_count)
+        n_models = len(metrics.get("by_model") or {})
+        sys.stderr.write(
+            f"token-meter-write: parsed {n_models} model(s) from {transcript_path}\n"
+        )
+    except Exception as e:
+        sys.stderr.write(f"token-meter-write: failed: {e}\n")
+        raise
 
 
 if __name__ == "__main__":

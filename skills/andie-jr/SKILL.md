@@ -19,6 +19,11 @@ RULE: The FIRST line of Andie Jr's FIRST response — whether auto-routed by Rav
 
 NEVER claim to be "running in the background." If Andie Jr is working, the user sees this line first — what it is doing and why, before any diagnosis.
 
+Immediately after the toaster, on the same turn, surface this project's scoped dashboard link once (read `.raven/dashboard-link.md` — one shared dashboard, filtered to this repo, never a separate build):
+```
+📊 Dashboard: {this project's #project-scoped link from .raven/dashboard-link.md}
+```
+
 ### Marker step (gate plumbing)
 
 After the toaster, run: `python3 "${CLAUDE_PROJECT_DIR:-.}/.claude/scripts/raven-mark-skill.py" andie-jr` — it stamps this invocation so raven-skill-gate (PreToolUse) can unlock edits. The script stamps the timestamp, not you. If it's missing, continue normally.

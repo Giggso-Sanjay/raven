@@ -1,0 +1,22 @@
+{
+  "_comment": "Data-driven list of what raven-sync.py ships to registered projects. Edit this file to add/remove synced items — do not hardcode filenames in raven-sync.py.",
+  "engine_scripts": [
+    "cve-check.py",
+    "secret-scan.py",
+    "audit-log.py",
+    "emit-violation.py"
+  ],
+  "skills": [
+    "andie",
+    "andie-jr",
+    "tools-landscape",
+    "raven-core"
+  ],
+  "dashboard_files": [
+    "scripts/dashboard/core.py",
+    "scripts/dashboard/xray.py",
+    "scripts/memory/vault_common.py",
+    "scripts/memory/ide-boot.py",
+    "scripts/memory/obsidian-log.py"
+  ]
+}

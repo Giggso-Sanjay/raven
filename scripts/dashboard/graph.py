@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """
 knowledge_graph.py — scan RavenVault markdown → knowledge-graph.json
+TRACKED: docs/DEPRECATIONS.md — vault note map, not code OKF; do not delete this version.
 
 Usage:
   python3 knowledge_graph.py
@@ -192,7 +193,11 @@ def write_graph(graph: dict, out: pathlib.Path | None = None) -> pathlib.Path:
 
 
 def main() -> None:
-    ap = argparse.ArgumentParser(description="Build RavenVault knowledge-graph.json")
+    print(
+        "graph.py writes vault *notes* JSON only. Code dashboard is xray.render_html → raven-dashboard.html.",
+        file=sys.stderr,
+    )
+    ap = argparse.ArgumentParser(description="Build RavenVault knowledge-graph.json (notes, not code OKF)")
     ap.add_argument("--project", default=None)
     ap.add_argument("--days", type=int, default=30, help="Session node window (default 30)")
     ap.add_argument("--all-sessions", action="store_true", help="Include all sessions")

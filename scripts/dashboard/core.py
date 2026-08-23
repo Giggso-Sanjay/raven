@@ -62,7 +62,7 @@ VAULT_METRICS = VAULT / ".metrics"
 VAULT_DASHBOARD_MD = VAULT / "Dashboard.md"
 VAULT_DASHBOARD_HTML = VAULT / "dashboard.html"
 
-PLUGIN_VERSION = "5.0.0"
+PLUGIN_VERSION = "5.5.0"
 
 
 # ── Metadata Collection ────────────────────────────────────────────────────────
@@ -2790,6 +2790,279 @@ def _gather_repo_logs(names: list, per: int = 40) -> tuple:
     return turns[-per:], costs[-per:], audits[-per:]
 
 
+def _usd(v) -> float:
+    try:
+        if v is None or v == "":
+            return 0.0
+        return float(v)
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def _day_key(row: dict) -> str:
+    ts = str(row.get("ts") or row.get("timestamp") or "")
+    return ts[:10] if len(ts) >= 10 else ""
+
+
+def _dedupe_log_rows(rows: list) -> list:
+    seen: set = set()
+    out = []
+    for r in rows:
+        k = (
+            r.get("ts") or r.get("timestamp"),
+            r.get("ide") or r.get("host"),
+            r.get("model") or r.get("recommend"),
+            r.get("computed_cost_usd"),
+            r.get("est_cost_usd"),
+            r.get("session_id"),
+            r.get("tokens_in"),
+            r.get("tokens_out"),
+        )
+        if k in seen:
+            continue
+        seen.add(k)
+        out.append(r)
+    return out
+
+
+def _get_cost_fn():
+    sess = str(Path(__file__).resolve().parent.parent / "session")
+    if sess not in sys.path:
+        sys.path.insert(0, sess)
+    from cost_calc import get_cost as _gc
+    return _gc
+
+
+def _spend_from_logs(turn_log: list, cost_log: list) -> dict:
+    """Spend = cost_calc.get_cost(router model, tokens_in, tokens_out).
+
+    Stop cost-log: one row per session (max in/out), no cache_read (that is how
+    $16×3 appeared on 31M cache hits). Turn-log: same calculator on recommend +
+    chars/4 in + 500 out guess when that IDE has no Stop tokens (Grok/Codex).
+    """
+    turn_log = _dedupe_log_rows(turn_log)
+    cost_log = _dedupe_log_rows(cost_log)
+    try:
+        gc = _get_cost_fn()
+    except Exception:
+        gc = lambda *_a, **_k: None
+
+    def _ide_fits_model(ide: str, model: str) -> bool:
+        i, m = (ide or "").lower(), (model or "").lower()
+        if i == "claude":
+            return "claude" in m or "anthropic" in m or not m
+        if i == "grok":
+            return "grok" in m
+        if i == "codex":
+            return any(x in m for x in ("codex", "gpt", "o3", "o4"))
+        return True
+
+    by_repo: dict = {}
+    days: dict = {}
+    sess_keys: set = set()
+    tok = 0
+    router_mix: dict = {}
+
+    def bucket(repo: str, ide: str) -> tuple:
+        b = by_repo.setdefault(repo, {"sessions": 0, "tokens": 0, "cost_usd": 0.0, "by_ide": {}, "kind": "estimated"})
+        ib = b["by_ide"].setdefault(ide, {"sessions": 0, "tokens": 0, "cost_usd": 0.0, "kind": "estimated", "in": 0, "out": 0})
+        return b, ib
+
+    best: dict = {}
+    for r in cost_log:
+        ide = str(r.get("ide") or r.get("host") or "unknown")
+        model = str(r.get("model") or "")
+        if not _ide_fits_model(ide, model):
+            continue
+        repo = str(r.get("repo") or r.get("project") or "unknown")
+        sid = str(r.get("session_id") or r.get("ts") or "")
+        key = (repo, ide, sid)
+        prev = best.get(key)
+        tout = int(r.get("tokens_out") or 0)
+        if prev is None or tout >= int(prev.get("tokens_out") or 0):
+            best[key] = r
+
+    covered = set()
+    for (repo, ide, sid), r in best.items():
+        model = str(r.get("model") or "unknown")
+        tin = int(r.get("tokens_in") or 0)
+        tout = int(r.get("tokens_out") or 0)
+        usd = gc(model, tin, tout)
+        if usd is None:
+            usd = 0.0
+        _b, ib = bucket(repo, ide)
+        ib["cost_usd"] += float(usd)
+        ib["kind"] = "actual"
+        ib["in"] = int(ib.get("in") or 0) + tin
+        ib["out"] = int(ib.get("out") or 0) + tout
+        ib["tokens"] += tin + tout
+        tok += tin + tout
+        day = _day_key(r)
+        if day:
+            days[day] = days.get(day, 0.0) + float(usd)
+        sess_keys.add((repo, ide, sid[:13]))
+        covered.add((repo, ide))
+
+    for r in turn_log:
+        repo = str(r.get("repo") or r.get("project") or "unknown")
+        ide = str(r.get("ide") or r.get("host") or "unknown")
+        model = str(r.get("recommend") or "")
+        tier = str(r.get("tier") or "?")
+        mk = (ide, tier, model or "?")
+        router_mix[mk] = router_mix.get(mk, 0) + 1
+        if (repo, ide) in covered:
+            continue
+        chars = int(r.get("prompt_chars") or 0)
+        tin = max(0, chars // 4)
+        tout = 500
+        usd = gc(model, tin, tout) if model else None
+        if usd is None:
+            usd = _usd(r.get("est_cost_usd"))
+        _b, ib = bucket(repo, ide)
+        ib["cost_usd"] += float(usd or 0)
+        ib["kind"] = "estimated"
+        ib["in"] = int(ib.get("in") or 0) + tin
+        ib["out"] = int(ib.get("out") or 0) + tout
+        ib["tokens"] += tin + tout
+        tok += tin + tout
+        day = _day_key(r)
+        if day:
+            days[day] = days.get(day, 0.0) + float(usd or 0)
+        sess_keys.add((repo, ide, str(r.get("session_id") or day or r.get("ts") or "")[:13]))
+
+    actual_total = 0.0
+    est_total = 0.0
+    for repo, b in by_repo.items():
+        b["sessions"] = sum(1 for k in sess_keys if k[0] == repo)
+        kinds = set()
+        cost = 0.0
+        tokens = 0
+        for ide, ib in b["by_ide"].items():
+            ib["sessions"] = sum(1 for k in sess_keys if k[0] == repo and k[1] == ide)
+            ib["cost_usd"] = round(ib["cost_usd"], 6)
+            cost += ib["cost_usd"]
+            tokens += int(ib.get("tokens") or 0)
+            kinds.add(ib.get("kind") or "estimated")
+            if ib.get("kind") == "actual":
+                actual_total += ib["cost_usd"]
+            else:
+                est_total += ib["cost_usd"]
+        b["cost_usd"] = round(cost, 6)
+        b["tokens"] = tokens
+        b["kind"] = "actual" if kinds == {"actual"} else ("estimated" if kinds == {"estimated"} else "mixed")
+    kind = "mixed" if actual_total > 0 and est_total > 0 else ("actual" if actual_total > 0 else "estimated")
+    mix_rows = [
+        {"ide": a, "tier": b, "model": c, "fires": n}
+        for (a, b, c), n in sorted(router_mix.items(), key=lambda kv: -kv[1])
+    ]
+    return {
+        "total_cost_usd": round(actual_total + est_total, 6),
+        "sessions_count": len(sess_keys),
+        "total_tokens": tok,
+        "by_project": by_repo,
+        "cost_by_day": {k: round(v, 6) for k, v in days.items()},
+        "spend_kind": kind,
+        "actual_usd": round(actual_total, 6),
+        "estimated_usd": round(est_total, 6),
+        "router_mix": mix_rows,
+    }
+
+
+def _obs_metrics(rows: list) -> dict:
+    by_ide: dict = {}
+    by_tier: dict = {}
+    by_repo: dict = {}
+    by_repo_cost: dict = {}
+    est = 0.0
+    chars = 0
+    last = ""
+    needs = 0
+    red = 0
+    for r in rows:
+        ide = str(r.get("ide") or r.get("host") or "—")
+        tier = str(r.get("tier") or "—")
+        repo = str(r.get("repo") or r.get("project") or "—")
+        by_ide[ide] = by_ide.get(ide, 0) + 1
+        by_tier[tier] = by_tier.get(tier, 0) + 1
+        by_repo[repo] = by_repo.get(repo, 0) + 1
+        usd = _usd(r.get("est_cost_usd"))
+        by_repo_cost[repo] = by_repo_cost.get(repo, 0.0) + usd
+        est += usd
+        try:
+            chars += int(r.get("prompt_chars") or 0)
+        except (TypeError, ValueError):
+            pass
+        ts = str(r.get("ts") or "")
+        if ts > last:
+            last = ts
+        if r.get("needs_rate"):
+            needs += 1
+        if r.get("redteam"):
+            red += 1
+    return {
+        "traces": len(rows),
+        "est": round(est, 6),
+        "chars": chars,
+        "last": last or "—",
+        "needs_rate": needs,
+        "redteam": red,
+        "by_ide": by_ide,
+        "by_tier": by_tier,
+        "by_repo": by_repo,
+        "by_repo_cost": {k: round(v, 6) for k, v in by_repo_cost.items()},
+    }
+
+
+def _count_tbl(d: dict, h1: str, h2: str) -> str:
+    if not d:
+        return f"<tr><td colspan='2'>No {h1.lower()} yet</td></tr>"
+    return "".join(
+        f"<tr><td>{html_lib.escape(str(k))}</td><td class='num'>{v}</td></tr>"
+        for k, v in sorted(d.items(), key=lambda kv: -kv[1])
+    )
+
+
+def _pane_bar(title: str, built: str) -> str:
+    return (
+        f'<div class="pane-bar"><h2>{title}</h2>'
+        f'<span class="dim refresh-meta">Last refresh: {html_lib.escape(built)}</span>'
+        f'<button type="button" class="refresh-now" onclick="refreshNow()" title="Rebuild now">↻ Refresh now</button></div>'
+    )
+
+
+def _with_running_est(turn_log: list) -> list:
+    """Fill est + total_cost_usd on old rows (needs_rate / empty cost-log)."""
+    try:
+        import sys as _sys
+        _sess = str(Path(__file__).resolve().parent.parent / "session")
+        if _sess not in _sys.path:
+            _sys.path.insert(0, _sess)
+        from cost_calc import estimate as _est
+    except Exception:
+        _est = None
+    running = 0.0
+    out = []
+    for r in turn_log:
+        row = dict(r)
+        if row.get("est_cost_usd") is None and _est and row.get("recommend"):
+            try:
+                e = _est(str(row.get("recommend")), int(row.get("prompt_chars") or 0))
+                if e.get("est_cost_usd") is not None:
+                    row["est_cost_usd"] = e["est_cost_usd"]
+                    row["needs_rate"] = False
+            except Exception:
+                pass
+        est = row.get("est_cost_usd")
+        running += _usd(est)
+        stored = _usd(row.get("total_cost_usd"))
+        if stored <= 0 and running > 0:
+            row["total_cost_usd"] = round(running, 6)
+        else:
+            running = max(running, stored)
+        out.append(row)
+    return out
+
+
 def _is_okf_html(path: Path) -> bool:
     try:
         head = path.read_text(errors="replace")[:8000]
@@ -2848,6 +3121,124 @@ def _ensure_okf_graphs(names: list[str]) -> None:
             print(f"dashboard: OKF build skipped for {name}: {e}", file=sys.stderr)
 
 
+def _one_line(text: str, n: int = 140) -> str:
+    s = " ".join((text or "").split())
+    if len(s) <= n:
+        return s
+    return s[: n - 1] + "…"
+
+
+def _readme_blurb(root: Path) -> tuple[str, list[str]]:
+    """One-line what-it-does + up to 5 bullets from README / CARD. No secrets."""
+    line, bullets = "", []
+    for name in ("README.md", "readme.md", "CLAUDE.md"):
+        p = root / name
+        if not p.is_file():
+            continue
+        try:
+            raw = p.read_text(encoding="utf-8", errors="replace")[:8000]
+        except OSError:
+            continue
+        paras, bl = [], []
+        for ln in raw.splitlines():
+            t = ln.strip()
+            if t.startswith("#"):
+                continue
+            if t.startswith(("- ", "* ", "• ")):
+                bl.append(t[2:].strip())
+                if len(bl) >= 5:
+                    break
+            elif t and not paras:
+                paras.append(t)
+        line = _one_line(paras[0] if paras else (bl[0] if bl else root.name))
+        bullets = bl[:5]
+        break
+    if not line:
+        man = root / ".raven" / "manifest.json"
+        try:
+            m = json.loads(man.read_text(encoding="utf-8"))
+            line = _one_line(str(m.get("description") or m.get("project") or root.name))
+        except (OSError, json.JSONDecodeError, TypeError):
+            line = root.name
+    return line, bullets
+
+
+def _recent_files(root: Path) -> tuple[list[str], str]:
+    """Max 5 recent paths + last commit date. Fail-soft."""
+    files, last = [], ""
+    try:
+        out = subprocess.run(
+            ["git", "-C", str(root), "log", "-1", "--format=%as"],
+            capture_output=True, text=True, timeout=8,
+        )
+        last = (out.stdout or "").strip()
+    except Exception:
+        last = ""
+    try:
+        out = subprocess.run(
+            ["git", "-C", str(root), "log", "-12", "--name-only", "--pretty=format:"],
+            capture_output=True, text=True, timeout=8,
+        )
+        seen: set[str] = set()
+        for ln in (out.stdout or "").splitlines():
+            p = ln.strip()
+            if not p or p in seen:
+                continue
+            seen.add(p)
+            files.append(p)
+            if len(files) >= 5:
+                break
+    except Exception:
+        pass
+    return files, last
+
+
+def _overview_repo_rows(names: list, bp: dict) -> str:
+    rows = []
+    seen: set[str] = set()
+    for name in names:
+        if not isinstance(name, str) or not name.strip():
+            continue
+        key = name.strip()
+        lk = key.lower()
+        if lk in seen:
+            continue
+        seen.add(lk)
+        lp = resolve_local_path(key, "")
+        root = Path(lp) if lp and Path(lp).exists() else None
+        blurb, bullets = _readme_blurb(root) if root else (_one_line(key), [])
+        recent, last = _recent_files(root) if root else ([], "")
+        extra = " …" if root and recent else ""
+        b = bp.get(key) if isinstance(bp.get(key), dict) else {}
+        if not b:
+            for pk, pv in (bp or {}).items():
+                if str(pk).lower() == lk and isinstance(pv, dict):
+                    b = pv
+                    break
+        ide_map = b.get("by_ide") if isinstance(b.get("by_ide"), dict) else {}
+        ide_s = " · ".join(
+            f"{html_lib.escape(str(ide))} ${float(iv.get('cost_usd') or 0):.4f}"
+            for ide, iv in sorted(ide_map.items(), key=lambda kv: -float((kv[1] or {}).get("cost_usd") or 0))
+            if isinstance(iv, dict)
+        ) or "—"
+        total = float(b.get("cost_usd") or 0)
+        ul = ""
+        if bullets:
+            ul = "<ul class='brief'>" + "".join(f"<li>{html_lib.escape(_one_line(x, 80))}</li>" for x in bullets[:5]) + "</ul>"
+        files_html = "<br>".join(html_lib.escape(f) for f in recent) + (html_lib.escape(extra) if extra else "")
+        if not files_html:
+            files_html = "—"
+        rows.append(
+            f"<tr><td><b>{html_lib.escape(key)}</b></td>"
+            f"<td>{html_lib.escape(blurb)}{ul}</td>"
+            f"<td class='dim'>{files_html}</td>"
+            f"<td>{html_lib.escape(last or '—')}</td>"
+            f"<td>{ide_s}</td>"
+            f"<td class='num'>${total:.4f}</td></tr>"
+        )
+    return "".join(rows) or "<tr><td colspan='6'>No repos discovered</td></tr>"
+
+
 def write_raven_dashboard(metadata: dict, metrics: Optional[dict] = None) -> Path:
     """Full dashboard: Graph + Overview + Repos + Costs + Guards. Graph = xray OKF only."""
     out_dir = VAULT / "dashboard"
@@ -2875,6 +3266,38 @@ def write_raven_dashboard(metadata: dict, metrics: Optional[dict] = None) -> Pat
         f"<option value='{fn}' {'selected' if fn == tree_file else ''}>{stem}</option>"
         for stem, fn in sorted(tree_map.items())
     ) or "<option value=''>no graphs yet</option>"
+
+    turn_log, cost_log, audit_log = _gather_repo_logs(
+        [project, *list(tree_map.keys()), *list(bp.keys())], per=200
+    )
+    turn_log = _with_running_est(turn_log)
+    log_spend = _spend_from_logs(turn_log, cost_log)
+    metrics = dict(metrics)
+    spend_kind = log_spend.get("spend_kind") or "estimated"
+    metrics["total_cost_usd"] = float(log_spend.get("total_cost_usd") or 0)
+    metrics["cost_by_day"] = log_spend["cost_by_day"] or metrics.get("cost_by_day") or {}
+    metrics["spend_kind"] = spend_kind
+    metrics["actual_usd"] = float(log_spend.get("actual_usd") or 0)
+    metrics["estimated_usd"] = float(log_spend.get("estimated_usd") or 0)
+    metrics["sessions_count"] = max(int(metrics.get("sessions_count") or 0), log_spend["sessions_count"])
+    metrics["total_tokens"] = max(int(metrics.get("total_tokens") or 0), log_spend["total_tokens"])
+    merged_bp = dict(bp)
+    for name, b in log_spend["by_project"].items():
+        merged_bp[name] = dict(b)
+    for _n, b in merged_bp.items():
+        if not isinstance(b, dict):
+            continue
+        ides = b.get("by_ide") if isinstance(b.get("by_ide"), dict) else {}
+        if ides:
+            b["cost_usd"] = round(
+                sum(float(iv.get("cost_usd") or 0) for iv in ides.values() if isinstance(iv, dict)),
+                6,
+            )
+            b["tokens"] = sum(int(iv.get("tokens") or 0) for iv in ides.values() if isinstance(iv, dict))
+            kinds = {str(iv.get("kind") or "estimated") for iv in ides.values() if isinstance(iv, dict)}
+            b["kind"] = "actual" if kinds == {"actual"} else ("estimated" if kinds == {"estimated"} else "mixed")
+    bp = merged_bp
+    metrics["by_project"] = bp
 
     repo_rows = []
     listed: set[str] = set()
@@ -2914,6 +3337,11 @@ def write_raven_dashboard(metadata: dict, metrics: Optional[dict] = None) -> Pat
             f"<td>{graph_cell}</td></tr>"
         )
     repo_tbl = "".join(repo_rows) or "<tr><td colspan='5'>No repo metrics yet</td></tr>"
+    ov_names = []
+    for x in (project, *list(tree_map.keys()), *list(bp.keys())):
+        if x and str(x) not in ov_names:
+            ov_names.append(str(x))
+    overview_tbl = _overview_repo_rows(ov_names, bp)
 
     guards = metrics.get("guard_events") or {}
     GUARD_MEANING = {
@@ -2941,10 +3369,8 @@ def write_raven_dashboard(metadata: dict, metrics: Optional[dict] = None) -> Pat
         g_rows = ""
     n_guards = sum(guards.values()) if hasattr(guards, "values") else 0
 
-    turn_log, cost_log, audit_log = _gather_repo_logs(
-        [project, *list(tree_map.keys()), *list(bp.keys())], per=40
-    )
-    logpack_json = json.dumps({"turn": turn_log, "cost": cost_log, "audit": audit_log})
+    obs_log = _tail_jsonl(Path.home() / "RavenVault" / "obs" / "runs.jsonl", 80)
+    logpack_json = json.dumps({"turn": turn_log, "cost": cost_log, "audit": audit_log, "obs": obs_log})
     try:
         from dash_settings import public_view as _pv
         settings_json = json.dumps(_pv())
@@ -2954,7 +3380,7 @@ def write_raven_dashboard(metadata: dict, metrics: Optional[dict] = None) -> Pat
         *tree_map.keys(),
         *[
             str(r.get("repo") or r.get("project") or "").strip()
-            for r in (turn_log + cost_log + audit_log)
+            for r in (turn_log + cost_log + audit_log + obs_log)
             if str(r.get("repo") or r.get("project") or "").strip()
         ],
     }, key=lambda s: s.lower())
@@ -2973,7 +3399,7 @@ def write_raven_dashboard(metadata: dict, metrics: Optional[dict] = None) -> Pat
             f"<td>{_td(r.get('tier'))}</td><td>{_td(r.get('recommend'))}</td>"
             f"<td class='num'>{_td(r.get('est_cost_usd'), money=True)}</td>"
             f"<td class='num'>{_td(r.get('total_cost_usd'), money=True)}</td>"
-            f"<td>{('<a href=\"'+html_lib.escape(str(r.get('obs_url')))+'\" target=\"_blank\" rel=\"noopener\">LangSmith</a>') if r.get('obs_url') else '—'}</td>"
+            f"<td><button type='button' onclick=\"show('obs');openLog('obs',{i})\">view</button></td>"
             f"<td><button type='button' onclick=\"openLog('turn',{i})\">json</button></td></tr>"
             for i, r in reversed(list(enumerate(turn_log)))
         )
@@ -3007,8 +3433,83 @@ def write_raven_dashboard(metadata: dict, metrics: Optional[dict] = None) -> Pat
         )
     else:
         audit_tbl = "<tr><td colspan='6'>No audit JSONL in window.</td></tr>"
+    obs_src = _with_running_est(obs_log) if obs_log else turn_log
+    if obs_src:
+        obs_tbl = "".join(
+            f"<tr data-repo='{html_lib.escape(_repo_cell(r).lower())}'>"
+            f"<td>{_td(r.get('ts'))}</td><td>{_td(_repo_cell(r))}</td>"
+            f"<td>{_td(r.get('ide') or r.get('host'))}</td>"
+            f"<td>{_td(r.get('tier'))}</td><td>{_td(r.get('recommend'))}</td>"
+            f"<td class='num'>{_td(r.get('prompt_chars'))}</td>"
+            f"<td class='num'>{_td(r.get('est_cost_usd'), money=True)}</td>"
+            f"<td><button type='button' onclick=\"openLog('obs',{i})\">json</button></td></tr>"
+            for i, r in reversed(list(enumerate(obs_src)))
+        )
+    else:
+        obs_tbl = "<tr><td colspan='8'>No local traces yet. Router writes ~/RavenVault/obs/runs.jsonl (not git).</td></tr>"
+    om = _obs_metrics(obs_src)
+    obs_ide_tbl = _count_tbl(om["by_ide"], "IDE", "Traces")
+    obs_tier_tbl = _count_tbl(om["by_tier"], "Tier", "Traces")
+    obs_repo_tbl = "".join(
+        f"<tr><td>{html_lib.escape(str(k))}</td>"
+        f"<td class='num'>{om['by_repo'].get(k, 0)}</td>"
+        f"<td class='num'>${float(om['by_repo_cost'].get(k, 0)):.4f}</td></tr>"
+        for k in sorted(om["by_repo"].keys(), key=lambda x: -om["by_repo_cost"].get(x, 0))
+    ) or "<tr><td colspan='3'>No repo traces yet</td></tr>"
+    cost_repo_parts = []
+    for k, v in sorted((bp or {}).items(), key=lambda kv: -float((kv[1] or {}).get("cost_usd") or 0)):
+        if not isinstance(v, dict):
+            continue
+        rk = v.get("kind") or "estimated"
+        cost_repo_parts.append(
+            f"<tr><td><b>{html_lib.escape(str(k))}</b> <span class='dim'>summary · {html_lib.escape(str(rk))}</span></td>"
+            f"<td class='num'>{int(v.get('sessions') or 0)}</td>"
+            f"<td class='num'>{int(v.get('tokens') or 0):,}</td>"
+            f"<td class='num'>${float(v.get('cost_usd') or 0):.4f}</td></tr>"
+        )
+        for ide, iv in sorted((v.get("by_ide") or {}).items(), key=lambda kv: -float((kv[1] or {}).get("cost_usd") or 0)):
+            if not isinstance(iv, dict):
+                continue
+            ik = iv.get("kind") or "estimated"
+            io = ""
+            if iv.get("in") or iv.get("out"):
+                io = f" in={int(iv.get('in') or 0):,} out={int(iv.get('out') or 0):,}"
+            cost_repo_parts.append(
+                f"<tr><td class='dim' style='padding-left:24px'>IDE · {html_lib.escape(str(ide))} ({html_lib.escape(str(ik))}{io})</td>"
+                f"<td class='num'>{int(iv.get('sessions') or 0)}</td>"
+                f"<td class='num'>{int(iv.get('tokens') or 0):,}</td>"
+                f"<td class='num'>${float(iv.get('cost_usd') or 0):.4f}</td></tr>"
+            )
+    mix = log_spend.get("router_mix") or []
+    router_mix_tbl = "".join(
+        f"<tr><td>{html_lib.escape(str(r.get('ide')))}</td>"
+        f"<td>{html_lib.escape(str(r.get('tier')))}</td>"
+        f"<td><code>{html_lib.escape(str(r.get('model')))}</code></td>"
+        f"<td class='num'>{int(r.get('fires') or 0)}</td></tr>"
+        for r in mix
+    ) or "<tr><td colspan='4'>No router fires</td></tr>"
+    cost_by_repo_tbl = "".join(cost_repo_parts) or "<tr><td colspan='4'>No repo cost yet — router turn-log is empty</td></tr>"
+    built_at = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%SZ")
 
     spend = float(metrics.get("total_cost_usd") or 0)
+    spend_kind = metrics.get("spend_kind") or log_spend.get("spend_kind") or "estimated"
+    act_u = float(metrics.get("actual_usd") or log_spend.get("actual_usd") or 0)
+    est_u = float(metrics.get("estimated_usd") or log_spend.get("estimated_usd") or 0)
+    if spend_kind == "actual":
+        spend_label = "Spend (actual)"
+        spend_tip = "Stop-hook computed_cost_usd only (tokens × rates). Per IDE."
+    elif spend_kind == "mixed":
+        spend_label = "Spend (mixed)"
+        spend_tip = (
+            f"Calculator: tokens_in/1e6×input_rate + tokens_out/1e6×output_rate. "
+            f"Actual ${act_u:.4f} = get_cost(model, in, out) per Claude session (max in/out, no 31M cache_read). "
+            f"Estimated ${est_u:.4f} = same formula on router recommend + chars/4 in + 500 out "
+            "(Grok/Codex have no Stop tokens — a Grok credit recharge is not in these files)."
+        )
+    else:
+        spend_label = "Spend (estimated)"
+        spend_tip = "No cost-log actuals. turn-log est_cost_usd only (chars/4 + 500 out guess). Not billed."
+    spend_tip = spend_tip + " Check actual billed cost on this dashboard after Refresh, or /run-costs."
     sess = int(metrics.get("sessions_count") or 0)
     tok = int(metrics.get("total_tokens") or 0)
     days = metrics.get("cost_by_day") or {}
@@ -3049,22 +3550,29 @@ th,td{{padding:8px;border-bottom:1px solid var(--line);text-align:left}}
 .dim{{color:var(--muted)}}
 .tiles{{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:10px;margin:12px 0}}
 .tile{{background:var(--panel);padding:12px;border-radius:8px;border:1px solid var(--line)}}
+ul.brief{{margin:6px 0 0;padding-left:18px;font-size:12px;color:var(--muted)}}
+#v-home table{{font-size:13px}}
 select{{background:#1c2330;color:var(--ink);border:1px solid var(--line);padding:4px 8px;border-radius:6px}}
+.pane-bar{{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:8px}}
+.pane-bar h2{{margin:0;flex:1}}
+.refresh-now{{background:#1c2330;color:var(--ink);border:1px solid var(--line);border-radius:6px;padding:4px 10px;cursor:pointer}}
+.refresh-now:hover{{border-color:var(--accent)}}
 </style></head>
 <body>
 <aside>
   <h1 style="font-size:16px;padding:0 8px 12px">🪶 Raven<br><span class="dim" style="font-size:12px" id="repoLabel">{project}</span></h1>
-  <button class="nav on" data-v="graph">Graph</button>
-  <button class="nav" data-v="home">Overview</button>
+  <button class="nav on" data-v="home">Overview</button>
+  <button class="nav" data-v="graph">Graph</button>
   <button class="nav" data-v="repos">Repos</button>
   <button class="nav" data-v="costs">Costs</button>
   <button class="nav" data-v="logs">Logs</button>
+  <button class="nav" data-v="obs">Observability</button>
   <button class="nav" data-v="guards">Guards</button>
   <button class="nav" data-v="settings">Settings</button>
 </aside>
 <main>
-<section class="view on" id="v-graph">
-  <h2>Graph</h2>
+<section class="view" id="v-graph">
+  {_pane_bar("Graph", built_at)}
   <p class="dim">Pick a repo — Graph loads <b>that</b> repo’s page. Built by <code>xray.render_html</code> when a local clone exists.</p>
   <p style="margin:8px 0">Repo:
     <select id="okfSel" onchange="goOkf(this.value)">{opts}</select>
@@ -3072,31 +3580,52 @@ select{{background:#1c2330;color:var(--ink);border:1px solid var(--line);padding
   </p>
   <iframe id="gframe" src="{iframe}" title="OKF graph"></iframe>
 </section>
-<section class="view" id="v-home">
-  <h2>Overview</h2>
+<section class="view on" id="v-home">
+  {_pane_bar("Overview", built_at)}
   <div class="tiles">
-    <div class="tile"><div class="dim">30d spend <span id="ovScope"></span></div><div style="font-size:22px" id="ovSpend">${spend:.2f}</div></div>
+    <div class="tile" title="{html_lib.escape(spend_tip)}"><div class="dim">{spend_label} <span id="ovScope"></span></div><div style="font-size:22px" id="ovSpend">${spend:.2f}</div></div>
     <div class="tile"><div class="dim">Sessions</div><div style="font-size:22px" id="ovSess">{sess}</div></div>
     <div class="tile"><div class="dim">Tokens</div><div style="font-size:22px" id="ovTok">{tok:,}</div></div>
     <div class="tile"><div class="dim">Guard events (all repos)</div><div style="font-size:22px">{n_guards}</div></div>
   </div>
+  <p class="dim">All repos Raven can see. One-line purpose from README, up to 5 bullets, last 5 files from git, last commit date, cost by IDE, total.</p>
+  <table>
+    <thead><tr>
+      <th>Repo</th>
+      <th>What it does</th>
+      <th>Recent files</th>
+      <th>Last edited</th>
+      <th>Cost (IDE)</th>
+      <th class="num">Total cost</th>
+    </tr></thead>
+    <tbody>{overview_tbl}</tbody>
+  </table>
 </section>
 <section class="view" id="v-repos">
-  <h2>Repos</h2>
+  {_pane_bar("Repos", built_at)}
   <p class="dim">Click a row to open that repo in the Graph pane.</p>
   <table><thead><tr><th>Repo</th><th class="num">Sessions</th><th class="num">Tokens</th><th class="num">Cost</th><th>Graph</th></tr></thead>
   <tbody>{repo_tbl}</tbody></table>
 </section>
 <section class="view" id="v-costs">
-  <h2>Costs</h2>
+  {_pane_bar("Costs", built_at)}
+  <p class="dim">{html_lib.escape(spend_tip)} Grouped by <b>repo</b>, then <b>IDE</b>.</p>
   <div class="tiles">
-    <div class="tile"><div class="dim">Spend 30d</div><div style="font-size:22px" id="costSpend">${spend:.2f}</div></div>
+    <div class="tile" title="{html_lib.escape(spend_tip)}"><div class="dim">{spend_label}</div><div style="font-size:22px" id="costSpend">${spend:.2f}</div></div>
     <div class="tile"><div class="dim">Sessions</div><div style="font-size:22px" id="costSess">{sess}</div></div>
   </div>
+  <h3 style="margin:16px 0 8px">By repo, then IDE</h3>
+  <table><thead><tr><th>Repo / IDE</th><th class="num">Sessions</th><th class="num">Tokens</th><th class="num">Cost</th></tr></thead>
+  <tbody>{cost_by_repo_tbl}</tbody></table>
+  <h3 style="margin:16px 0 8px">Router (what classified, not billed Opus/Fable)</h3>
+  <p class="dim">Counts from turn-log.jsonl. Cost uses this <code>recommend</code> in get_cost(). No Opus/Fable in this table unless the router wrote those ids.</p>
+  <table><thead><tr><th>IDE</th><th>Tier</th><th>Recommend</th><th class="num">Fires</th></tr></thead>
+  <tbody>{router_mix_tbl}</tbody></table>
+  <h3 style="margin:16px 0 8px">By day</h3>
   <table><thead><tr><th>Day</th><th class="num">Spend</th></tr></thead><tbody>{day_rows}</tbody></table>
 </section>
 <section class="view" id="v-logs">
-  <h2>Logs</h2>
+  {_pane_bar("Logs", built_at)}
   <p class="dim">Every row is classified by <b>repo</b> and <b>IDE</b>. Filter, then json → detail. ← Back returns to these tables.</p>
   <div id="logTables">
   <p>Repo: <select id="logRepo" onchange="filterLogs(this.value)">{log_repo_opts}</select></p>
@@ -3110,32 +3639,65 @@ select{{background:#1c2330;color:var(--ink);border:1px solid var(--line);padding
   <table><thead><tr><th>When</th><th>Repo</th><th>IDE</th><th>Event</th><th>Detail</th><th></th></tr></thead>
   <tbody>{audit_tbl}</tbody></table>
   </div>
-  <div id="logDetail" style="display:none">
-    <p><button type="button" onclick="closeLogDetail()">← Back to log tables</button>
-       <span class="dim" id="logDetailMeta"></span></p>
-    <pre id="logDetailPre" class="dim"></pre>
+</section>
+<section class="view" id="v-obs">
+  {_pane_bar("Observability", built_at)}
+  <p class="dim">Local traces from <code>~/RavenVault/obs/runs.jsonl</code> (metadata only — no prompt/response). Metrics are counts from those rows.</p>
+  <div class="tiles">
+    <div class="tile"><div class="dim">Traces</div><div style="font-size:22px">{om["traces"]}</div></div>
+    <div class="tile"><div class="dim">Est spend (traces)</div><div style="font-size:22px">${om["est"]:.4f}</div></div>
+    <div class="tile"><div class="dim">Prompt chars</div><div style="font-size:22px">{om["chars"]:,}</div></div>
+    <div class="tile"><div class="dim">Last trace</div><div style="font-size:14px">{html_lib.escape(om["last"])}</div></div>
+    <div class="tile"><div class="dim">needs_rate</div><div style="font-size:22px">{om["needs_rate"]}</div></div>
+    <div class="tile"><div class="dim">redteam flags</div><div style="font-size:22px">{om["redteam"]}</div></div>
+  </div>
+  <div class="tiles">
+    <div class="tile"><h3>By IDE</h3><table><thead><tr><th>IDE</th><th class="num">Traces</th></tr></thead><tbody>{obs_ide_tbl}</tbody></table></div>
+    <div class="tile"><h3>By tier</h3><table><thead><tr><th>Tier</th><th class="num">Traces</th></tr></thead><tbody>{obs_tier_tbl}</tbody></table></div>
+    <div class="tile"><h3>By repo (cost)</h3><table><thead><tr><th>Repo</th><th class="num">Traces</th><th class="num">Est $</th></tr></thead><tbody>{obs_repo_tbl}</tbody></table></div>
+  </div>
+  <div id="obsTables">
+  <p>Repo: <select id="obsRepo" onchange="filterLogs(this.value)">{log_repo_opts}</select></p>
+  <table><thead><tr><th>When</th><th>Repo</th><th>IDE</th><th>Tier</th><th>Recommend</th><th class="num">prompt chars</th><th class="num">est</th><th></th></tr></thead>
+  <tbody>{obs_tbl}</tbody></table>
   </div>
 </section>
 <section class="view" id="v-settings">
-  <h2>Settings</h2>
+  {_pane_bar("Settings", built_at)}
   <p class="dim">See and edit local config. No API keys. Save needs <code>python3 scripts/ops/dashboard-server.py</code> (127.0.0.1:9787). file:// is view-only.</p>
   <form id="setForm" class="tile" style="max-width:640px" onsubmit="return saveSettings(event)">
-    <p><label>LangSmith enabled <input type="checkbox" id="setLsOn"/></label></p>
-    <p><label>LangSmith base URL<br><input id="setLsBase" style="width:100%"/></label></p>
+    <h3>Observability</h3>
+    <p class="dim"><b>LangSmith (smith.langchain.com) is not open source.</b> The tracing UI is cloud; self-host LangSmith is a paid Enterprise add-on. The OSS path is a <b>self-hosted</b> stack you run (typically <b>Langfuse</b> MIT, or local tracers like opensmith) — not a Raven checkbox that uploads traces.</p>
+    <p class="dim">Raven still does <b>not</b> copy prompts into git. Choose a backend; Logs <b>Observe</b> is a <b>link</b> to that UI. Real traces only exist if that product is already tracing (their SDK/env).</p>
+    <p>Mode:
+      <label><input type="radio" name="obsMode" value="local"/> In dashboard (default)</label>
+      <label><input type="radio" name="obsMode" value="off"/> Off</label>
+      <label><input type="radio" name="obsMode" value="external"/> Extra UI URL (optional Langfuse)</label>
+      <label><input type="radio" name="obsMode" value="langsmith_cloud"/> LangSmith cloud</label>
+    </p>
+    <p><label>Optional extra UI URL (only if you already run Langfuse)<br><input id="setOsBase" style="width:100%" placeholder="http://127.0.0.1:3000"/></label></p>
+    <p><label>LangSmith cloud base URL<br><input id="setLsBase" style="width:100%"/></label></p>
     <p><label>LangSmith project (name only)<br><input id="setLsProj" style="width:100%"/></label></p>
-    <p class="dim">Traces stay in LangSmith. Logs get a project link + obs_run_id join key. We do not copy prompts into the repo.</p>
-    <p><label>AIRTaaS red-team MCP enabled <input type="checkbox" id="setAirOn"/></label></p>
-    <p><label>AIRTaaS MCP command or URL (no secrets)<br><input id="setAirMcp" style="width:100%" placeholder="npx … or http://…"/></label></p>
-    <p class="dim">Not shipped. When enabled, security-classed prompts log redteam=airtaas — the agent must call that MCP. Free single-dev: paste your AIRTaaS MCP here.</p>
+    <h3 style="margin-top:18px">AIRTaaS red-team</h3>
+    <p><label>AIRTaaS MCP enabled <input type="checkbox" id="setAirOn"/></label></p>
+    <p>MCP (fixed): <code>https://sandbox.airtaas.ai/mcp</code></p>
+    <p><button type="button" onclick="window.open('https://sandbox.airtaas.ai','_blank','noopener')">Log in to AIRTaaS</button>
+       <span class="dim">Opens their site. Login stays with AIRTaaS — Raven does not store password or token.</span></p>
+    <p class="dim">Sandbox is free for developers; enterprise is paid. Enable the checkbox after you have a session. Security-classed prompts then log <code>redteam=airtaas</code>.</p>
     <p><button type="submit">Save</button> <span class="dim" id="setMsg"></span></p>
   </form>
 </section>
 <section class="view" id="v-guards">
-  <h2>Guards</h2>
+  {_pane_bar("Guards", built_at)}
   <p class="dim">{n_guards} JSONL line(s) in <code>.raven/audit</code> for this window. Count is not “incidents.” Only <code>guard_block</code> / <code>block</code> / <code>violation</code> are stops.</p>
   <table><thead><tr><th>Event</th><th class="num">Count</th><th>What it means</th></tr></thead>
   <tbody>{g_rows or "<tr><td colspan='3'>No audit lines in window</td></tr>"}</tbody></table>
 </section>
+<div id="logDetail" style="display:none;flex:1;padding:16px;overflow:auto">
+  <p><button type="button" onclick="closeLogDetail()">← Back to log tables</button>
+     <span class="dim" id="logDetailMeta"></span></p>
+  <pre id="logDetailPre" class="dim"></pre>
+</div>
 </main>
 <script>
 const OKF = {okf_json};
@@ -3146,6 +3708,25 @@ const ALL = {{spend:{spend}, sess:{sess}, tok:{tok}}};
 function show(v){{
   document.querySelectorAll('.nav').forEach(x=>x.classList.toggle('on', x.dataset.v===v));
   document.querySelectorAll('.view').forEach(x=>x.classList.toggle('on', x.id==='v-'+v));
+  try {{ sessionStorage.setItem('ravenPane', v); }} catch(e) {{}}
+  closeLogDetail();
+}}
+function refreshNow(){{
+  const on = document.querySelector('.nav.on');
+  const pane = on && on.dataset.v;
+  if (pane) try {{ sessionStorage.setItem('ravenPane', pane); }} catch(e) {{}}
+  document.querySelectorAll('.refresh-now').forEach(b => {{ b.disabled = true; b.textContent = 'Refreshing…'; }});
+  const bust = Date.now();
+  fetch('http://127.0.0.1:9787/api/run-costs?t='+bust).catch(()=>{{}}).then(() =>
+    fetch('http://127.0.0.1:9787/refresh?t='+bust)
+  ).then(r=>r.json()).then(() => {{
+    location.reload();
+  }}).catch(() => {{
+    document.querySelectorAll('.refresh-meta').forEach(el => {{
+      el.textContent = 'Last refresh: start python3 scripts/ops/dashboard-server.py then click again (file:// cannot rebuild)';
+    }});
+    document.querySelectorAll('.refresh-now').forEach(b => {{ b.disabled = false; b.textContent = '↻ Refresh now'; }});
+  }});
 }}
 document.querySelectorAll('.nav').forEach(n=>n.onclick=()=>show(n.dataset.v));
 function stemOf(fn){{ return (fn||'').replace(/\\.html$/i,''); }}
@@ -3161,22 +3742,13 @@ function applyRepo(file){{
   if (el) el.textContent = stem || 'all';
   const look = document.getElementById('graphLooking');
   if (look) look.textContent = 'Looking at: ' + (stem || 'all');
-  const m = metricFor(stem);
-  const spend = m.cost_usd, sess = m.sessions, tok = m.tokens;
-  const fmt = n => (n||0).toLocaleString();
-  const money = n => '$'+(n||0).toFixed(2);
   const set = (id, v) => {{ const n=document.getElementById(id); if(n) n.textContent=v; }};
-  set('ovSpend', money(spend));
-  set('ovSess', fmt(sess));
-  set('ovTok', fmt(tok));
-  set('ovScope', '('+stem+')');
-  set('costSpend', money(spend));
-  set('costSess', fmt(sess));
+  set('ovScope', stem ? '(graph: '+stem+'; totals are all repos)' : '(all repos)');
   if (history.replaceState) history.replaceState(null,'','#'+stem);
 }}
 function filterLogs(repo){{
   const r = (repo||'all').toLowerCase().replace(/\\.html$/,'');
-  document.querySelectorAll('#logTables tr[data-repo]').forEach(tr => {{
+  document.querySelectorAll('tr[data-repo]').forEach(tr => {{
     const v = (tr.getAttribute('data-repo')||'').toLowerCase();
     const hit = (r==='all'||r===''||v===r||v.replace(/_/g,'-')===r.replace(/_/g,'-'));
     tr.style.display = hit ? '' : 'none';
@@ -3191,9 +3763,8 @@ function filterLogs(repo){{
 function openLog(bag, i){{
   const row = (LOGPACK[bag]||[])[i];
   if (!row) return;
-  const tables = document.getElementById('logTables');
+  document.querySelectorAll('main > .view').forEach(x => x.style.display = 'none');
   const det = document.getElementById('logDetail');
-  if (tables) tables.style.display = 'none';
   if (det) det.style.display = 'block';
   const meta = document.getElementById('logDetailMeta');
   if (meta) meta.textContent = 'repo='+(row.repo||row.project||'—')+' · ide='+(row.ide||row.host||'—');
@@ -3202,25 +3773,27 @@ function openLog(bag, i){{
 }}
 (function fillSettings(){{
   const s = SETTINGS || {{}};
-  const on = document.getElementById('setLsOn');
-  if (on) on.checked = !!s.langsmith_enabled;
+  const mode = s.observability || 'local';
+  document.querySelectorAll('input[name=obsMode]').forEach(el => {{ el.checked = el.value === mode; }});
+  const os = document.getElementById('setOsBase');
+  if (os) os.value = s.opensource_base_url || 'http://127.0.0.1:3000';
   const b = document.getElementById('setLsBase');
   if (b) b.value = s.langsmith_base_url || '';
   const p = document.getElementById('setLsProj');
   if (p) p.value = s.langsmith_project || '';
   const ao = document.getElementById('setAirOn');
   if (ao) ao.checked = !!s.airtaas_enabled;
-  const am = document.getElementById('setAirMcp');
-  if (am) am.value = s.airtaas_mcp || '';
 }})();
 function saveSettings(ev){{
   ev.preventDefault();
+  const modeEl = document.querySelector('input[name=obsMode]:checked');
   const body = {{
-    langsmith_enabled: document.getElementById('setLsOn').checked,
+    observability: modeEl ? modeEl.value : 'off',
+    langsmith_enabled: !!(modeEl && modeEl.value === 'langsmith_cloud'),
     langsmith_base_url: document.getElementById('setLsBase').value,
     langsmith_project: document.getElementById('setLsProj').value,
-    airtaas_enabled: document.getElementById('setAirOn').checked,
-    airtaas_mcp: document.getElementById('setAirMcp').value
+    opensource_base_url: document.getElementById('setOsBase').value,
+    airtaas_enabled: document.getElementById('setAirOn').checked
   }};
   const msg = document.getElementById('setMsg');
   fetch('http://127.0.0.1:9787/api/settings', {{
@@ -3234,12 +3807,15 @@ function saveSettings(ev){{
   return false;
 }}
 function closeLogDetail(){{
-  const tables = document.getElementById('logTables');
   const det = document.getElementById('logDetail');
   if (det) det.style.display = 'none';
-  if (tables) tables.style.display = 'block';
+  const on = document.querySelector('.nav.on');
+  const v = on && on.dataset.v;
+  document.querySelectorAll('main > .view').forEach(x => {{
+    x.style.display = (v && x.id === 'v-'+v) ? 'block' : 'none';
+  }});
 }}
-function goOkf(name){{
+function goOkf(name, stay){{
   if(!name) return;
   const allowed = Object.values(OKF);
   if(allowed.indexOf(name)<0) return;
@@ -3248,9 +3824,13 @@ function goOkf(name){{
   const sel = document.getElementById('okfSel');
   if(sel) sel.value = name;
   applyRepo(name);
-  show('graph');
+  if (!stay) show('graph');
 }}
 (function(){{
+  try {{
+    var pane = sessionStorage.getItem('ravenPane');
+    if (pane) show(pane);
+  }} catch(e) {{}}
   var h = decodeURIComponent((location.hash||'').replace(/^#/,''));
   if(!h) return;
   var s = h.toLowerCase().replace(/\\.html$/,'');
@@ -3259,7 +3839,7 @@ function goOkf(name){{
     var k = Object.keys(OKF).find(x => x.replace(/-/g,'')===s.replace(/-/g,''));
     file = k ? OKF[k] : '';
   }}
-  if(file) goOkf(file);
+  if(file) goOkf(file, true);
 }})();
 </script>
 </body></html>

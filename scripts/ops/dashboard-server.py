@@ -8,40 +8,38 @@ Endpoints:
   GET /metrics.json → raw metrics dict
 Usage: python3 dashboard-server.py [--port 9787]
 """
+import argparse
 import http.server
 import json
+import os
 import pathlib
 import subprocess
 import sys
-import argparse
 import urllib.parse
 from io import StringIO
 
-DASHBOARD_SCRIPT = pathlib.Path(__file__).parent / "dashboard.py"
-DASHBOARD_HTML = pathlib.Path.home() / "RavenVault" / "dashboard.html"
+DASHBOARD_SCRIPT = pathlib.Path(__file__).resolve().parents[1] / "dashboard.py"
+DASHBOARD_HTML = pathlib.Path.home() / "RavenVault" / "dashboard" / "raven-dashboard.html"
 PORT = 9787
 
 
 def run_dashboard_script() -> dict:
-    """Execute dashboard.py and parse output."""
+    """Rebuild raven-dashboard.html. Timeout covers OKF rebake."""
+    env = dict(os.environ)
+    env["RAVEN_DASHBOARD_NO_OPEN"] = "1"
     try:
         result = subprocess.run(
             ["python3", str(DASHBOARD_SCRIPT), "--html"],
             capture_output=True,
             text=True,
-            timeout=10,
+            timeout=180,
+            env=env,
         )
         if result.returncode != 0:
-            return {"error": f"dashboard.py failed: {result.stderr}"}
-
-        # If it outputs JSON, parse it
-        try:
-            return json.loads(result.stdout)
-        except json.JSONDecodeError:
-            # Otherwise just return success
-            return {"html_generated": True}
+            return {"ok": False, "error": (result.stderr or result.stdout or "")[-800]}
+        return {"ok": True, "html_generated": True}
     except Exception as e:
-        return {"error": str(e)}
+        return {"ok": False, "error": str(e)}
 
 
 def render_html_with_refresh() -> str:
@@ -79,6 +77,46 @@ VAULT_DASH = pathlib.Path.home() / "RavenVault" / "dashboard"
 _SCRIPTS = pathlib.Path(__file__).resolve().parents[1]
 if str(_SCRIPTS / "dashboard") not in sys.path:
     sys.path.insert(0, str(_SCRIPTS / "dashboard"))
+
+
+def safe_repo_file(root: str, rel: str):
+    """Absolute file under home + git root. None if escape or missing."""
+    if not root or not rel:
+        return None
+    try:
+        root_p = pathlib.Path(root).expanduser().resolve()
+        home = pathlib.Path.home().resolve()
+        if not str(root_p).startswith(str(home)):
+            return None
+        if not root_p.is_dir():
+            return None
+        rel_p = pathlib.Path(str(rel).replace("\\", "/").lstrip("/"))
+        if ".." in rel_p.parts or rel_p.is_absolute():
+            return None
+        dest = (root_p / rel_p).resolve()
+        prefix = str(root_p) + os.sep
+        if not (str(dest).startswith(prefix) or dest == root_p):
+            return None
+        if not dest.is_file():
+            return None
+        return dest
+    except (OSError, RuntimeError, ValueError):
+        return None
+
+
+def open_local_file(dest: pathlib.Path, app: str = "") -> dict:
+    """macOS `open` so the file leaves the browser sandbox."""
+    try:
+        if app in ("code", "vscode"):
+            cmd = ["open", "-a", "Visual Studio Code", str(dest)]
+        elif app in ("cursor",):
+            cmd = ["open", "-a", "Cursor", str(dest)]
+        else:
+            cmd = ["open", str(dest)]
+        subprocess.run(cmd, check=False, capture_output=True, timeout=8)
+        return {"ok": True, "path": str(dest)}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
 
 
 class DashboardRequestHandler(http.server.SimpleHTTPRequestHandler):
@@ -133,6 +171,73 @@ class DashboardRequestHandler(http.server.SimpleHTTPRequestHandler):
         if path == "/api/settings":
             from dash_settings import public_view
             body = json.dumps(public_view()).encode()
+            self.send_response(200)
+            self.send_header("Content-type", "application/json")
+            self._cors()
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+            return
+
+        if path == "/api/open":
+            qs = urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query)
+            dest = safe_repo_file((qs.get("root") or [""])[0], (qs.get("rel") or [""])[0])
+            if not dest:
+                data = {"ok": False, "error": "file not found or path not allowed"}
+                self.send_response(400)
+            else:
+                data = open_local_file(dest, (qs.get("app") or [""])[0])
+                self.send_response(200 if data.get("ok") else 400)
+            body = json.dumps(data).encode()
+            self.send_header("Content-type", "application/json")
+            self._cors()
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+            return
+
+        if path == "/api/file":
+            qs = urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query)
+            dest = safe_repo_file((qs.get("root") or [""])[0], (qs.get("rel") or [""])[0])
+            if not dest:
+                data = {"ok": False, "error": "file not found or path not allowed"}
+                code = 400
+            else:
+                try:
+                    text = dest.read_text(encoding="utf-8", errors="replace")
+                    lines = text.splitlines()
+                    data = {
+                        "ok": True,
+                        "path": str(dest),
+                        "text": "\n".join(lines[:200]),
+                        "truncated": len(lines) > 200,
+                    }
+                    code = 200
+                except OSError as e:
+                    data = {"ok": False, "error": str(e)}
+                    code = 400
+            body = json.dumps(data).encode()
+            self.send_response(code)
+            self.send_header("Content-type", "application/json")
+            self._cors()
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+            return
+
+        if path == "/api/run-costs":
+            script = pathlib.Path(__file__).resolve().parents[1] / "session" / "run_costs.py"
+            try:
+                subprocess.run(
+                    [sys.executable, str(script)],
+                    timeout=12,
+                    capture_output=True,
+                    env=dict(os.environ),
+                )
+                data = {"ok": True}
+            except Exception as e:
+                data = {"ok": False, "error": str(e)}
+            body = json.dumps(data).encode()
             self.send_response(200)
             self.send_header("Content-type", "application/json")
             self._cors()

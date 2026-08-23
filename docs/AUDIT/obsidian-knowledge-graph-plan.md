@@ -1,3 +1,5 @@
+> **SUPERSEDED boot path (2026-08-22):** `vault-load` is not SessionStart. Use `ide-boot.py` + CARD.md. This plan is historical.
+
 # Raven — Obsidian vault + knowledge graph
 
 **Status:** Implemented (P0–P2 in raven-core / plugin scripts)  

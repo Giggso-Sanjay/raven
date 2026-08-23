@@ -72,8 +72,9 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 \"${CLAUDE_PROJECT_DIR:-.}/.claude/scripts/token-meter-write.py\" 2>/dev/null || python3 \"${CLAUDE_PROJECT_DIR:-.}/scripts/token-meter-write.py\" 2>/dev/null || true",
-            "async": true
+            "command": "python3 \"${CLAUDE_PROJECT_DIR:-.}/.claude/scripts/token-meter-write.py\" || python3 \"${CLAUDE_PROJECT_DIR:-.}/scripts/session/token-meter-write.py\"",
+            "timeout": 30,
+            "async": false
           },
           {
             "type": "command",

@@ -34,6 +34,24 @@ class TestOkf(unittest.TestCase):
         impact = x.commit_impact(okf, "abc")
         self.assertIn("file:a.py", impact["files"])
 
+    def test_viewer_has_search_and_file_links(self):
+        js = (ROOT / "scripts" / "dashboard" / "okf-viewer.js").read_text()
+        self.assertIn("function okfSearch", js)
+        self.assertIn("openFileBrief", js)
+        self.assertIn("File summary", js)
+        self.assertIn("file-link", js)
+        self.assertIn("Open file", js)
+        self.assertIn("vscode://file", js)
+        self.assertIn("folderTree", js)
+        self.assertIn("/api/open", (ROOT / "scripts" / "ops" / "dashboard-server.py").read_text())
+        self.assertIn("loadPreview", js)
+        src = (ROOT / "scripts" / "dashboard" / "xray.py").read_text()
+        self.assertIn("_find_clone", src)
+        src = (ROOT / "scripts" / "dashboard" / "xray.py").read_text()
+        self.assertIn('"root": str(REPO.resolve())', src)
+        html = (ROOT / "scripts" / "dashboard" / "xray.py").read_text()
+        self.assertIn("id=\"okfQ\"", html)
+
 
 if __name__ == "__main__":
     unittest.main()

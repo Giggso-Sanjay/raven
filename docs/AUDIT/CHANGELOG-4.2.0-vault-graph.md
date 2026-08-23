@@ -1,3 +1,5 @@
+> Historical v4.2.0. SessionStart vault-load is **no longer** the agent boot path (see repo README, 2026-08-22).
+
 # Raven v4.2.0 — RavenVault knowledge graph & agent memory
 
 ## Summary

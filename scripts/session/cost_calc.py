@@ -43,8 +43,13 @@ def load_table() -> dict[str, dict]:
     aliases = dict(shipped.get("aliases") or {})
     local = _read_json(LOCAL_PRICING)
     for k, v in (local.get("models") or {}).items():
-        if isinstance(v, dict):
-            models[k] = v
+        if not isinstance(v, dict):
+            continue
+        shipped_row = models.get(k) or models.get(_norm(k))
+        local_blank = v.get("input_per_1m") is None or v.get("output_per_1m") is None
+        if local_blank and shipped_row and shipped_row.get("input_per_1m") is not None:
+            continue
+        models[k] = v
     out = {}
     for k, v in models.items():
         if not isinstance(v, dict):
@@ -168,23 +173,96 @@ def _fmt_usd(v) -> str:
         return "?"
 
 
-def running_total_usd(session_id: str = "") -> float:
-    """Sum computed_cost_usd from cost-log (session if id given, else all)."""
+def _sum_jsonl(path: Path, field: str, session_id: str = "") -> float:
     total = 0.0
-    if not COST_LOG.is_file():
+    if not path.is_file():
         return 0.0
     try:
-        for line in COST_LOG.read_text(encoding="utf-8").splitlines():
+        for line in path.read_text(encoding="utf-8").splitlines():
             try:
                 row = json.loads(line)
             except json.JSONDecodeError:
                 continue
             if session_id and row.get("session_id") and row.get("session_id") != session_id:
                 continue
-            total += float(row.get("computed_cost_usd") or 0)
+            try:
+                total += float(row.get(field) or 0)
+            except (TypeError, ValueError):
+                continue
     except OSError:
         return 0.0
     return round(total, 6)
+
+
+def spend_kind(session_id: str = "") -> tuple[str, float]:
+    """Return ('actual', usd) from cost-log, else ('estimated', usd) from turn-log.
+
+    Authoritative money is computed_cost_usd in cost-log.jsonl (Stop / token-meter-write).
+    If that file is missing or all zeros, this is an estimate — callers must label it.
+    Host-agnostic: the Stop write can fail on Claude as well as Grok/Codex (missing
+    hook path, swallowed stderr, empty stdin, or transcript schema). Not IDE-specific.
+    """
+    actual = _sum_jsonl(COST_LOG, "computed_cost_usd", session_id)
+    if actual > 0:
+        return "actual", actual
+    return "estimated", _sum_jsonl(TURN_LOG, "est_cost_usd", session_id)
+
+
+def calculator_spend() -> dict:
+    """get_cost(model, in, out) per Claude session (max in/out, no cache).
+
+    Grok/Codex: same formula on turn-log recommend + chars/4 + 500 out.
+    """
+    sessions: dict = {}
+    if COST_LOG.is_file():
+        for line in COST_LOG.read_text(encoding="utf-8").splitlines():
+            try:
+                r = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            ide = str(r.get("ide") or r.get("host") or "")
+            model = str(r.get("model") or "")
+            if ide == "grok" and "grok" not in model.lower():
+                continue
+            sid = str(r.get("session_id") or r.get("ts") or "")
+            tout = int(r.get("tokens_out") or 0)
+            prev = sessions.get(sid)
+            if prev is None or tout >= int(prev.get("tokens_out") or 0):
+                sessions[sid] = r
+    actual = 0.0
+    for r in sessions.values():
+        usd = get_cost(str(r.get("model") or ""), int(r.get("tokens_in") or 0), int(r.get("tokens_out") or 0))
+        if usd:
+            actual += usd
+    covered_ide = {str(r.get("ide") or r.get("host") or "") for r in sessions.values()}
+    est = 0.0
+    if TURN_LOG.is_file():
+        for line in TURN_LOG.read_text(encoding="utf-8").splitlines():
+            try:
+                r = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            ide = str(r.get("ide") or r.get("host") or "")
+            if ide in covered_ide and ide == "claude":
+                continue
+            model = str(r.get("recommend") or "")
+            tin = max(0, int(r.get("prompt_chars") or 0) // 4)
+            usd = get_cost(model, tin, 500) if model else None
+            if usd:
+                est += usd
+    if actual > 0 and est > 0:
+        kind = "mixed"
+    elif actual > 0:
+        kind = "actual"
+    else:
+        kind = "estimated"
+    return {"kind": kind, "usd": round(actual + est, 6), "actual": round(actual, 6), "estimated": round(est, 6)}
+
+
+def running_total_usd(session_id: str = "") -> float:
+    """Numeric running total. Prefer actuals; else estimates. See spend_kind()."""
+    _kind, usd = spend_kind(session_id)
+    return usd
 
 
 def load_last_turn() -> dict:

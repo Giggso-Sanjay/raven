@@ -5,6 +5,14 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 
 ---
 
+## [5.5.0] — 2026-08-22 — one plugin, every host
+
+- One zip: `plugin/raven-plugin-v5.5.0.zip` (`bash plugin/make-plugin.sh`, version from `raven-core/VERSION`).
+- Host glue in the zip: `AGENTS.md`, `.agents/agents.md`, `.cursor/rules`, `.windsurf/rules`, `GEMINI.md`, `replit.md`, `CLAUDE.md`, `install-host.sh`.
+- Claude loader still `.claude-plugin/`. Not a second plugin.
+- Scripts packaged from canonical `scripts/` subtrees (router, cost, dashboard).
+- Dashboard Overview above Graph; costs grouped by repo then IDE; graph file open via local `/api/open`.
+
 ## [Unreleased] — agent boot card + IDE router
 
 - **Stop** writes `.raven/memory/CARD.md` (in-repo). Vault stays `~/RavenVault` for humans.

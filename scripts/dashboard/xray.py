@@ -627,6 +627,11 @@ def stub_html(payload: dict) -> str:
   <div><button class="on" id="bboth" onclick="setGraphMode('both')">Graph</button>
        <button id="bfile" onclick="setGraphMode('file')">Files</button>
        <button id="bcommit" onclick="setGraphMode('commit')">Commits</button></div>
+  <div class="search">
+    <input id="okfQ" placeholder="Search this repo — filename or keyword"/>
+    <button type="button" id="okfQgo">Search</button>
+    <span class="meta" id="okfQmsg"></span>
+  </div>
 </div>
 <div id="row">
   <svg id="canvas" xmlns="http://www.w3.org/2000/svg"></svg>
@@ -646,6 +651,50 @@ def extract_okf_payload(text: str) -> dict | None:
         return json.loads(m.group(1))
     except json.JSONDecodeError:
         return None
+
+
+def _hub_local(stem: str) -> str:
+    hub = VAULT / "projects" / f"{stem}.md"
+    try:
+        text = hub.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return ""
+    m = re.search(r"(?im)^[\s\-*]*Local:\s*(.+)$", text)
+    if not m:
+        return ""
+    p = pathlib.Path(m.group(1).strip().strip("`")).expanduser()
+    return str(p.resolve()) if p.exists() else ""
+
+
+def _find_clone(stem: str) -> str:
+    hit = _hub_local(stem)
+    if hit:
+        return hit
+    bases = [
+        pathlib.Path.home() / "AntiGravity_Projects",
+        pathlib.Path.home() / "projects",
+        pathlib.Path.home(),
+    ]
+    needle = stem.lower()
+    for base in bases:
+        if not base.is_dir():
+            continue
+        try:
+            for p in base.iterdir():
+                if p.is_dir() and p.name.lower() == needle and (p / ".git").exists():
+                    return str(p.resolve())
+        except OSError:
+            continue
+        try:
+            for p in base.glob("*/*"):
+                if p.is_dir() and p.name.lower() == needle and (p / ".git").exists():
+                    return str(p.resolve())
+            for p in base.glob("*/*/*"):
+                if p.is_dir() and p.name.lower() == needle and (p / ".git").exists():
+                    return str(p.resolve())
+        except OSError:
+            continue
+    return ""
 
 
 def rebake_tree_htmls() -> int:
@@ -672,6 +721,9 @@ def rebake_tree_htmls() -> int:
         payload["nodes"] = enrich_nodes(payload.get("nodes") or [])
         if not payload.get("repo"):
             payload["repo"] = path.stem
+        root = str(payload.get("root") or "")
+        if not root or not pathlib.Path(root).is_dir():
+            payload["root"] = _find_clone(path.stem) or _find_clone(str(payload.get("repo") or ""))
         path.write_text(stub_html(payload), encoding="utf-8")
         n += 1
     return n
@@ -688,6 +740,7 @@ def render_html(open_after: bool = False) -> pathlib.Path:
         "edges": okf.get("edges", []),
         "git_head": okf.get("git_head", ""),
         "repo": tree.get("repo") or REPO.name,
+        "root": str(REPO.resolve()),
         "summary": summary,
     }
     publish_viewer()
