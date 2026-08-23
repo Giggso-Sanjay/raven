@@ -313,4 +313,4 @@ This means every project initialization is fully auditable in Git.
 
 ---
 
-*Raven v5.5.0 — github.com/giggsoinc/raven*
+*Raven v5.5.1 — github.com/giggsoinc/raven*

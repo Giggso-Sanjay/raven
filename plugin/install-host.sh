@@ -7,7 +7,7 @@ TARGET="${1:-.}"
 TARGET="$(cd "$TARGET" && pwd)"
 HOSTS="$ROOT/hosts"
 if [[ ! -d "$HOSTS" ]]; then
-  echo "install-host.sh: missing $HOSTS (unzip raven-plugin-v5.5.0.zip first)" >&2
+  echo "install-host.sh: missing $HOSTS (unzip raven-plugin-v5.5.1.zip first)" >&2
   exit 1
 fi
 

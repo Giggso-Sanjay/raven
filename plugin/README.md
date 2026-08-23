@@ -13,14 +13,14 @@ git clone https://github.com/giggsoinc/raven.git
 claude plugin install ./raven/plugin
 ```
 
-Or unzip `raven-plugin-v5.5.0.zip` and `claude plugin install /path/to/extracted`.
+Or unzip `raven-plugin-v5.5.1.zip` and `claude plugin install /path/to/extracted`.
 
 **Claude Desktop:** Settings → Extensions → Add plugin → drop the zip.
 
 **Grok / Codex / Cursor / AntiGravity / Windsurf / Replit / Gemini**
 
 ```bash
-unzip raven-plugin-v5.5.0.zip -d raven-plugin
+unzip raven-plugin-v5.5.1.zip -d raven-plugin
 bash raven-plugin/install-host.sh /path/to/your-project
 ```
 

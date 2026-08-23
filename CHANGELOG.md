@@ -5,6 +5,12 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 
 ---
 
+## [5.5.1] — 2026-08-23 — host router + educate; install pin
+
+- Current zip: `plugin/raven-plugin-v5.5.1.zip`. Tag `v5.5.1`.
+- Session/prompt start prints version, educate, expected SIMPLE/MEDIUM/COMPLEX.
+- Global Claude: `model-router.py --hook` + deny-mode push-gate.
+
 ## [5.5.0] — 2026-08-22 — one plugin, every host
 
 - One zip: `plugin/raven-plugin-v5.5.0.zip` (`bash plugin/make-plugin.sh`, version from `raven-core/VERSION`).
