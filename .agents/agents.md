@@ -1,19 +1,21 @@
 # AntiGravity — same contract as Codex/Grok (`AGENTS.md`). Not optional.
-# Also honor AGENTS.override.md. First tools: ide-boot (card) then session-start then every-turn router. No skip.
+# Also honor AGENTS.override.md. First tools: raven-first --boot then --session-start then every-turn --prompt. No skip.
 
 ## First load (same UX every IDE)
 
-1. `bash scripts/raven-python.sh scripts/memory/ide-boot.py` — print `host=` `rules=` `memory=` `load=` `educate=` `route=` `expected_route=` `first_load=`
+1. `python3 scripts/ops/raven-first.py --boot` — print `host=` `rules=` `memory=` `load=` `educate=` `route=` `expected_route=` `first_load=`
+   Fallback: `python3 "${CLAUDE_PLUGIN_ROOT}/scripts/ops/raven-first.py" --boot`
 2. If `load=1`, Read **only** the `memory=` card
-3. `bash scripts/raven-python.sh scripts/routing/model-router.py --session-start` — print banner
-4. Dashboard later: `bash scripts/raven-python.sh scripts/memory/ide-boot.py --open`
+3. `python3 scripts/ops/raven-first.py --session-start` — print banner
+4. Dashboard later: `python3 scripts/ops/raven-first.py --boot` with open, or `ide-boot.py --open`
 
 **FORCE — every user turn, before any other tool or prose.**
 
-1. Run (this wrapper, **not** bare `python3` — Anaconda on this machine crashes `encodings`):
+1. Run (raven-first copies the engine into this app repo if missing — do **not** lead with `bash scripts/raven-python.sh` alone):
    ```
-   bash scripts/raven-python.sh scripts/routing/model-router.py --prompt "<full user message>"
+   python3 scripts/ops/raven-first.py --prompt "<full user message>"
    ```
+   Fallback: `python3 "${CLAUDE_PLUGIN_ROOT}/scripts/ops/raven-first.py" --prompt "<full user message>"`
 2. Print the script stdout **first**, unedited:
    - Line 1 `🔀 Router · host=antigravity · …`
    - Line 2 `💰 total-cost= last_turn= est=`
@@ -27,7 +29,3 @@ Do **not** invent architecture (injectSteps vs Claude hooks) to cover a failed s
 Recommend tiers come from `.raven/boot.json` host `antigravity` (`gemini-flash` / `gemini-pro`). Never apply Claude model ids on this host.
 
 `applied=true` only if this session model already matches `recommend`, or you actually switched/spawned to it.
-
-Turn end: `bash scripts/raven-python.sh scripts/session/cost_calc.py --end`
-
-Educate guided until `go ahead`. Briefing then STOP — no mutating tools before approval. Lucky / `educate off` persist in `.raven/educate.json`.

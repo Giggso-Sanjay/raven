@@ -5,6 +5,13 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 
 ---
 
+## [5.5.3] — 2026-08-23 — plugin-root first-load
+
+- Current zip: `plugin/raven-plugin-v5.5.3.zip`. Tag `v5.5.3`.
+- `scripts/ops/raven-first.py` finds the plugin engine and copies it into any cwd.
+- `host-ensure` now copies `scripts/{routing,memory,session,ops}` when missing.
+- AGENTS / Cursor / Windsurf / VS Code / Gemini / Replit lead with raven-first (not raven-python.sh alone).
+
 ## [5.5.2] — 2026-08-23 — first-load all IDEs
 
 - Current zip: `plugin/raven-plugin-v5.5.2.zip`. Tag `v5.5.2`.

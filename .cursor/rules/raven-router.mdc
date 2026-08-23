@@ -5,9 +5,13 @@ alwaysApply: true
 
 ## First load (same UX every IDE)
 
-1. `bash scripts/raven-python.sh scripts/memory/ide-boot.py` — print host/rules/memory/load/educate/route/expected_route/first_load
+1. `python3 scripts/ops/raven-first.py --boot` — print host/rules/memory/load/educate/route/expected_route/first_load
+   Fallback: `python3 "${CLAUDE_PLUGIN_ROOT}/scripts/ops/raven-first.py" --boot`
 2. If `load=1`, Read only the `memory=` card
-3. `bash scripts/raven-python.sh scripts/routing/model-router.py --session-start` — print banner
-4. Every later turn before any other tool: `bash scripts/raven-python.sh scripts/routing/model-router.py --prompt "<user message>"`
+3. `python3 scripts/ops/raven-first.py --session-start` — print banner
+4. Every later turn before any other tool: `python3 scripts/ops/raven-first.py --prompt "<user message>"`
+   Fallback: `python3 "${CLAUDE_PLUGIN_ROOT}/scripts/ops/raven-first.py" --prompt "<user message>"`
+
+Do **not** lead with `bash scripts/raven-python.sh` as the only path — raven-first copies the engine into the app repo when missing.
 
 Print 🔀 then 💰 then educate= expected= then session= then Intent:. git log/status is not an exemption. educate=guided: briefing then STOP until go ahead.

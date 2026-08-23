@@ -5,6 +5,16 @@ adds an entry here (newest first), and must pass `scripts/check-version-consiste
 (CI: `raven-version-consistency-check`). Historical changelogs in `docs/` are
 never rewritten — this file is the roll-up index.
 
+## v5.5.3 — 2026-08-23 — Plugin-root first-load copies engine into app repo (patch)
+
+Public Codex/Cursor often run in an app repo with no `scripts/`. `raven-first.py`
+locates the plugin engine (`CLAUDE_PLUGIN_ROOT` / `RAVEN_PLUGIN_ROOT` / home plugins),
+runs `host-ensure` to copy `raven-python.sh` + `scripts/{routing,memory,session,ops}`
++ AGENTS glue into the project, then execs boot/router/cost. Host docs lead with
+`python3 scripts/ops/raven-first.py --prompt` (plugin-root fallback). Tag `v5.5.3`.
+
+---
+
 ## v5.5.2 — 2026-08-23 — First-load UX on every IDE (patch)
 
 Same first-load sequence for Claude, Codex, Grok, AntiGravity, Cursor, Windsurf,

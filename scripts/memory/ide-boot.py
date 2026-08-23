@@ -135,7 +135,7 @@ def route(env: dict | None = None, root: Path | None = None) -> dict:
         "graph_cli": boot.get("graph_cli") or "python3 scripts/code-xray.py",
         "mcp": ",".join(boot.get("mcp_graph") or []),
         "educate": edu,
-        "route": "bash scripts/raven-python.sh scripts/routing/model-router.py --prompt",
+        "route": "python3 scripts/ops/raven-first.py --prompt",
         "expected_route": expected,
     }
 

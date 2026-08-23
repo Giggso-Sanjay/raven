@@ -7,7 +7,7 @@ TARGET="${1:-.}"
 TARGET="$(cd "$TARGET" && pwd)"
 HOSTS="$ROOT/hosts"
 if [[ ! -d "$HOSTS" ]]; then
-  echo "install-host.sh: missing $HOSTS (unzip raven-plugin-v5.5.2.zip first)" >&2
+  echo "install-host.sh: missing $HOSTS (unzip raven-plugin-v5.5.3.zip first)" >&2
   exit 1
 fi
 
@@ -43,4 +43,4 @@ if [[ -d "$ROOT/scripts" ]]; then
   cp -R "$ROOT/scripts/." "$TARGET/scripts/"
   echo "  $TARGET/scripts/ (engine)"
 fi
-echo "Done. Open the project in your IDE. Router: python3 scripts/routing/model-router.py --prompt \"...\""
+echo "Done. Open the project in your IDE. Router: python3 scripts/ops/raven-first.py --prompt \"...\""

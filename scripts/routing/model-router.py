@@ -488,7 +488,7 @@ def main():
             models = _load_model_env(host)
             edu = _educate_mode()
             rules = _host_rules(host)
-            ver = "5.5.2"
+            ver = "5.5.3"
             try:
                 vp = _find_project_root() / "raven-core" / "VERSION"
                 if vp.is_file():
@@ -503,7 +503,7 @@ def main():
                 "First load (Claude/Codex/Grok/AntiGravity/Cursor/Windsurf/VSCode/Gemini/Replit): "
                 "ide-boot → Read memory= if load=1 → this --session-start → every-turn router.\n"
                 "🔀 Base router ON (mandatory). First user turn: "
-                "bash scripts/raven-python.sh scripts/routing/model-router.py --prompt \"…\"\n"
+                "python3 scripts/ops/raven-first.py --prompt \"…\"\n"
                 "applied=false until this IDE spawns/swaps. "
                 "guided = briefing then go-ahead before writes."
             )

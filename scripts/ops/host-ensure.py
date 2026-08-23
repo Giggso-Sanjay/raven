@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
-"""Ensure host glue + working python wrapper. Open dashboard on --open.
+"""Ensure host glue + working python wrapper + engine script trees.
 
-Called from /raven-init and /raven-debug so public users get AGENTS.md,
-.agents/agents.md, raven-python.sh, and a dashboard without extra instructions.
+Called from raven-first /raven-init /raven-debug so public users get AGENTS.md,
+.agents/agents.md, raven-python.sh, routing/memory/session/ops, and a dashboard.
 
   python3 scripts/ops/host-ensure.py --open
+  RAVEN_ENGINE=/path/to/plugin python3 …/host-ensure.py --no-open
 """
 from __future__ import annotations
 
@@ -15,8 +16,11 @@ import subprocess
 import sys
 from pathlib import Path
 
-ENGINE = Path(__file__).resolve().parents[2]
+_ENV_ENGINE = (os.environ.get("RAVEN_ENGINE") or "").strip()
+ENGINE = Path(_ENV_ENGINE).resolve() if _ENV_ENGINE else Path(__file__).resolve().parents[2]
 TARGET = Path(os.environ.get("CLAUDE_PROJECT_DIR") or Path.cwd()).resolve()
+_TREES = ("routing", "memory", "session", "ops")
+_IGNORE = shutil.ignore_patterns("__pycache__", "*.pyc", ".DS_Store")
 
 
 def _copy(src: Path, dest: Path) -> str:
@@ -24,6 +28,38 @@ def _copy(src: Path, dest: Path) -> str:
     if src.resolve() != dest.resolve():
         shutil.copy2(src, dest)
     return str(dest.relative_to(TARGET))
+
+
+def _copy_tree_missing(src: Path, dest: Path) -> str | None:
+    """Copy engine script subtree into TARGET when missing or incomplete."""
+    if not src.is_dir():
+        return None
+    marker_name = {
+        "routing": "model-router.py",
+        "memory": "ide-boot.py",
+        "session": "cost_calc.py",
+        "ops": "raven-first.py",
+    }.get(dest.name)
+    if dest.is_dir() and marker_name and (dest / marker_name).is_file():
+        return None
+    if dest.resolve() == src.resolve():
+        return None
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    if not dest.exists():
+        shutil.copytree(src, dest, ignore=_IGNORE)
+    else:
+        for root, dirs, files in os.walk(src):
+            dirs[:] = [d for d in dirs if d not in ("__pycache__",)]
+            rel = Path(root).relative_to(src)
+            out = dest / rel
+            out.mkdir(parents=True, exist_ok=True)
+            for name in files:
+                if name.endswith(".pyc") or name == ".DS_Store":
+                    continue
+                s, d = Path(root) / name, out / name
+                if not d.is_file():
+                    shutil.copy2(s, d)
+    return str(dest.relative_to(TARGET)) + "/"
 
 
 def ensure() -> list[str]:
@@ -34,6 +70,10 @@ def ensure() -> list[str]:
         _copy(py, dest_py)
         dest_py.chmod(dest_py.stat().st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
         done.append("scripts/raven-python.sh")
+    for name in _TREES:
+        rel = _copy_tree_missing(ENGINE / "scripts" / name, TARGET / "scripts" / name)
+        if rel:
+            done.append(rel)
     always = [
         (ENGINE / ".agents" / "agents.md", TARGET / ".agents" / "agents.md"),
         (ENGINE / "AGENTS.md", TARGET / "AGENTS.md"),
@@ -73,7 +113,7 @@ def open_dashboard() -> None:
 def main() -> int:
     done = ensure()
     print("host-ensure: " + (", ".join(done) if done else "already present"))
-    print('Router: bash scripts/raven-python.sh scripts/routing/model-router.py --prompt "…"')
+    print('Router: python3 scripts/ops/raven-first.py --prompt "…"')
     if "--no-open" not in sys.argv:
         open_dashboard()
     return 0
