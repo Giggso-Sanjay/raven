@@ -34,25 +34,22 @@ def ensure() -> list[str]:
         _copy(py, dest_py)
         dest_py.chmod(dest_py.stat().st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
         done.append("scripts/raven-python.sh")
-    agents_src = ENGINE / ".agents" / "agents.md"
-    if agents_src.is_file():
-        done.append(_copy(agents_src, TARGET / ".agents" / "agents.md"))
-    ag = ENGINE / "AGENTS.md"
-    if ag.is_file() and not (TARGET / "AGENTS.md").is_file():
-        done.append(_copy(ag, TARGET / "AGENTS.md"))
-    boot_src = ENGINE / ".raven" / "boot.json"
-    boot_dst = TARGET / ".raven" / "boot.json"
-    if boot_src.is_file() and not boot_dst.is_file():
-        done.append(_copy(boot_src, boot_dst))
-    copies = [
+    always = [
+        (ENGINE / ".agents" / "agents.md", TARGET / ".agents" / "agents.md"),
+        (ENGINE / "AGENTS.md", TARGET / "AGENTS.md"),
+        (ENGINE / "AGENTS.override.md", TARGET / "AGENTS.override.md"),
         (ENGINE / ".cursor" / "rules" / "raven-router.mdc", TARGET / ".cursor" / "rules" / "raven-router.mdc"),
         (ENGINE / ".windsurf" / "rules" / "ide-boot.md", TARGET / ".windsurf" / "rules" / "ide-boot.md"),
         (ENGINE / ".vscode" / "raven-router.md", TARGET / ".vscode" / "raven-router.md"),
         (ENGINE / ".github" / "copilot-instructions.md", TARGET / ".github" / "copilot-instructions.md"),
     ]
-    for src, dest in copies:
-        if src.is_file() and not dest.is_file():
+    for src, dest in always:
+        if src.is_file():
             done.append(_copy(src, dest))
+    boot_src = ENGINE / ".raven" / "boot.json"
+    boot_dst = TARGET / ".raven" / "boot.json"
+    if boot_src.is_file() and not boot_dst.is_file():
+        done.append(_copy(boot_src, boot_dst))
     return done
 
 

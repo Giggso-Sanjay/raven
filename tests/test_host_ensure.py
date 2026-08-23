@@ -27,6 +27,7 @@ class TestHostEnsure(unittest.TestCase):
             done = he.ensure()
         self.assertTrue((target / "scripts" / "raven-python.sh").is_file())
         self.assertTrue((target / ".agents" / "agents.md").is_file())
+        self.assertTrue((target / "AGENTS.override.md").is_file())
         self.assertTrue(any("raven-python" in x for x in done))
 
     def test_skills_call_host_ensure(self):

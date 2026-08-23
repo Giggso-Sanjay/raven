@@ -20,6 +20,7 @@ copy() {
 
 echo "Raven host glue → $TARGET"
 [[ -f "$HOSTS/AGENTS.md" ]] && copy "$HOSTS/AGENTS.md" "$TARGET/AGENTS.md"
+[[ -f "$HOSTS/AGENTS.override.md" ]] && copy "$HOSTS/AGENTS.override.md" "$TARGET/AGENTS.override.md"
 [[ -f "$HOSTS/CLAUDE.md" ]] && copy "$HOSTS/CLAUDE.md" "$TARGET/CLAUDE.md"
 [[ -f "$HOSTS/GEMINI.md" ]] && copy "$HOSTS/GEMINI.md" "$TARGET/GEMINI.md"
 [[ -f "$HOSTS/replit.md" ]] && copy "$HOSTS/replit.md" "$TARGET/replit.md"

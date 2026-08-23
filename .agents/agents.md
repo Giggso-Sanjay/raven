@@ -1,4 +1,5 @@
 # AntiGravity — same contract as Codex/Grok (`AGENTS.md`). Not optional.
+# Also honor AGENTS.override.md. First tools: ide-boot (card) then model-router. No skip.
 
 **FORCE — every user turn, before any other tool or prose.**
 

@@ -55,6 +55,7 @@ fi
 # Host glue — same zip, not Claude-only
 mkdir -p "$TMP_DIR/hosts/cursor" "$TMP_DIR/hosts/windsurf" "$TMP_DIR/hosts/antigravity" "$TMP_DIR/hosts/claude" "$TMP_DIR/hosts/vscode" "$TMP_DIR/hosts/github"
 cp "$REPO_DIR/AGENTS.md" "$TMP_DIR/hosts/AGENTS.md"
+cp "$REPO_DIR/AGENTS.override.md" "$TMP_DIR/hosts/AGENTS.override.md" 2>/dev/null || true
 cp "$REPO_DIR/CLAUDE.md" "$TMP_DIR/hosts/CLAUDE.md"
 cp "$REPO_DIR/GEMINI.md" "$TMP_DIR/hosts/GEMINI.md" 2>/dev/null || true
 cp "$REPO_DIR/replit.md" "$TMP_DIR/hosts/replit.md" 2>/dev/null || true
