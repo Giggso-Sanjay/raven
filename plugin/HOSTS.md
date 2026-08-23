@@ -10,7 +10,7 @@ It is not Claude-Desktop-only. Claude’s marketplace loader (`.claude-plugin/`)
 | Grok | `hosts/AGENTS.md` → project `AGENTS.md` + `scripts/` | `bash install-host.sh /path/to/project` |
 | Codex | same `AGENTS.md` | same |
 | Cursor | `.cursor/rules/raven-router.mdc` + `AGENTS.md` | same |
-| AntiGravity | `.agents/agents.md` | same |
+| AntiGravity | `.agents/agents.md` (same contract as Codex/Grok). **Must** use `bash scripts/raven-python.sh …` not Anaconda `python3`. | same |
 | Windsurf | `.windsurf/rules/ide-boot.md` | same |
 | Replit | `replit.md` | same |
 | Gemini CLI | `GEMINI.md` | same |

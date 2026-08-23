@@ -58,6 +58,8 @@ cp "$REPO_DIR/CLAUDE.md" "$TMP_DIR/hosts/CLAUDE.md"
 cp "$REPO_DIR/GEMINI.md" "$TMP_DIR/hosts/GEMINI.md" 2>/dev/null || true
 cp "$REPO_DIR/replit.md" "$TMP_DIR/hosts/replit.md" 2>/dev/null || true
 cp "$REPO_DIR/.agents/agents.md" "$TMP_DIR/hosts/antigravity/agents.md" 2>/dev/null || true
+cp "$REPO_DIR/scripts/raven-python.sh" "$TMP_DIR/scripts/raven-python.sh"
+chmod +x "$TMP_DIR/scripts/raven-python.sh"
 cp "$REPO_DIR/.cursor/rules/raven-router.mdc" "$TMP_DIR/hosts/cursor/raven-router.mdc" 2>/dev/null || true
 cp "$REPO_DIR/.windsurf/rules/ide-boot.md" "$TMP_DIR/hosts/windsurf/ide-boot.md" 2>/dev/null || true
 cp "$REPO_DIR/.claude/settings.json" "$TMP_DIR/hosts/claude/settings.json"

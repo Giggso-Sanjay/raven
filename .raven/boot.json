@@ -53,7 +53,7 @@
       }
     },
     "antigravity": {
-      "env_any": ["ANTIGRAVITY", "ANTIGRAVITY_HOME", "ANTIGRAVITY_CLI_ALIAS", "GOOGLE_ANTIGRAVITY"],
+      "env_any": ["ANTIGRAVITY", "ANTIGRAVITY_HOME", "ANTIGRAVITY_CLI_ALIAS", "GOOGLE_ANTIGRAVITY", "ANTIGRAVITY_SESSION"],
       "rules": ".agents/agents.md",
       "tiers": {
         "SIMPLE": "gemini-flash",

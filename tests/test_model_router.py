@@ -62,6 +62,16 @@ class TestBaseRouter(unittest.TestCase):
         self.assertIn("why:", line)
         self.assertIn("total-cost=", line)
 
+    def test_agents_dir_detects_antigravity_without_env(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            (root / ".agents").mkdir()
+            (root / ".agents" / "agents.md").write_text("x\n")
+            (root / ".raven").mkdir()
+            (root / ".raven" / "boot.json").write_text('{"hosts":{}}')
+            with mock.patch.object(self.m, "_find_project_root", return_value=root):
+                self.assertEqual(self.m.detect_host({}), "antigravity")
+
     def test_grok_host_uses_grok_models(self):
         env = {"GROK_SESSION_ID": "1"}
         self.assertEqual(self.m.detect_host(env), "grok")

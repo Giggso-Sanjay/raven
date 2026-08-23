@@ -57,7 +57,16 @@ This is the correct behaviour when a developer runs `raven-debug` as their first
 
 ### MANIFEST EXISTS — Full Diagnostic
 
-Run these checks in order. Output ✅ or ❌ per check.
+**First (mandatory, public path):** host glue + dashboard — do not skip:
+
+```bash
+python3 scripts/ops/host-ensure.py --open
+```
+
+This installs `scripts/raven-python.sh` (not Anaconda), `.agents/agents.md` / `AGENTS.md`, and **opens the dashboard**. Then run checks in order. Output ✅ or ❌ per check.
+
+0. **raven-python.sh** — exists, executable, `bash scripts/raven-python.sh -c "import encodings"` works?
+0b. **`.agents/agents.md` or `AGENTS.md`** — present (AntiGravity / Grok / Codex contract)?
 
 1. **CLAUDE.md** — exists at project root?
 2. **manifest.json** — valid JSON, all required fields present?

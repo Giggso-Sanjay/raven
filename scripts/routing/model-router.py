@@ -160,6 +160,9 @@ def detect_host(env: Optional[Dict] = None) -> str:
         for key in (spec or {}).get("env_any") or []:
             if env.get(key):
                 return name
+    root = _find_project_root()
+    if (root / ".agents" / "agents.md").is_file() or (root / ".agents" / "AGENTS.md").is_file():
+        return "antigravity"
     return "unknown"
 
 

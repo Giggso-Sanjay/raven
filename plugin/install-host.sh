@@ -24,6 +24,7 @@ echo "Raven host glue → $TARGET"
 [[ -f "$HOSTS/GEMINI.md" ]] && copy "$HOSTS/GEMINI.md" "$TARGET/GEMINI.md"
 [[ -f "$HOSTS/replit.md" ]] && copy "$HOSTS/replit.md" "$TARGET/replit.md"
 [[ -f "$HOSTS/antigravity/agents.md" ]] && copy "$HOSTS/antigravity/agents.md" "$TARGET/.agents/agents.md"
+[[ -f "$HOSTS/antigravity/agents.md" ]] && copy "$HOSTS/antigravity/agents.md" "$TARGET/.agents/AGENTS.md"
 [[ -f "$HOSTS/cursor/raven-router.mdc" ]] && copy "$HOSTS/cursor/raven-router.mdc" "$TARGET/.cursor/rules/raven-router.mdc"
 [[ -f "$HOSTS/windsurf/ide-boot.md" ]] && copy "$HOSTS/windsurf/ide-boot.md" "$TARGET/.windsurf/rules/ide-boot.md"
 if [[ -f "$HOSTS/claude/settings.json" ]]; then

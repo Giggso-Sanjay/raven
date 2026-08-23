@@ -16,6 +16,25 @@ AI codes fast. Raven enforces Discipline — Strategic Thinking, Scalable Struct
 
 All local. Zero telemetry. MIT.
 
+`#comprehension_debt` `#ai_coding` `#claude_code` `#grok` `#codex` `#cursor` `#discipline_engine` `#token_cost` `#secret_scan` `#cve` `#mcp` `#obsidian` `#agent_memory`
+
+## Plugin — what you can do
+
+One zip: [`plugin/raven-plugin-v5.5.0.zip`](plugin/raven-plugin-v5.5.0.zip). Same artifact for Claude Code / Desktop and other hosts (`install-host.sh`).
+
+| You want to | In the plugin |
+|---|---|
+| Plan new work | **Andie** — 3-angle plan, wait for go-ahead |
+| Debug existing code | **Andie-Jr** — 2-round root cause → fix |
+| Route every prompt | `model-router.py` — visible `🔀` + cheapest adequate tier |
+| See spend | Local dashboard + `/run-costs` (calculator; billed $ if API keys in env) |
+| See the repo | OKF **Graph** (files/commits, search, open file) |
+| Stop secrets / CVEs | Pre-commit + skills: secret scan, CVE gate |
+| Work in Grok / Codex / Cursor / AntiGravity | `/raven-init` or `/raven-debug` runs `host-ensure.py --open` (python wrapper + `.agents/agents.md` + dashboard) |
+| Slash commands | `/raven-init`, `/raven-debug`, `/run-costs`, `/andie`, `/andie-jr`, … |
+
+Calculator spend is local. Check **actual billed** cost on the Costs pane or `/run-costs`.
+
 ## Install
 
 Raven is **not** in an Anthropic-hosted plugin marketplace — `/plugin marketplace add giggsoinc/raven` will not work. Pick one:

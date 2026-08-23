@@ -28,9 +28,16 @@ That copies `AGENTS.md` / `.cursor/rules` / `.agents/agents.md` / `GEMINI.md` / 
 
 Then in a project: `/raven-init` (Claude) or copy `.raven/manifest.json` from the engine repo.
 
-## What ships in 5.5.0
+## What you can do with this plugin
 
-- Host router + cost (`scripts/routing`, `scripts/session`)
-- Local dashboard + OKF graph (`scripts/dashboard`)
-- Skills, agents, slash commands
-- `hosts/` glue files (what each IDE actually reads)
+| You want to | Command / path |
+|---|---|
+| Plan | Andie (`/andie`) |
+| Debug | Andie-Jr (`/andie-jr`) |
+| Route + cost toast | `scripts/routing/model-router.py` |
+| Spend (local calc) | Dashboard Costs, `/run-costs` |
+| Graph | `scripts/dashboard` OKF |
+| Init a project | `/raven-init` |
+| Other IDEs | `bash install-host.sh <project>` |
+
+`#comprehension_debt` `#ai_coding` `#claude_code` `#grok` `#codex` `#discipline_engine` `#token_cost`

@@ -1,7 +1,7 @@
 # AGENTS.md — Grok / Codex / Cursor boot
 
 **0. BEFORE any answer or tool — every user turn. No exemptions.**
-- Run `python3 scripts/routing/model-router.py --prompt "<their full message>"` first. That write is what fills dashboard **Logs**. Skipping it leaves Logs empty for this IDE.
+- Run `bash scripts/raven-python.sh scripts/routing/model-router.py --prompt "<their full message>"` first (not Anaconda `python3`). That write fills dashboard **Logs**. Skipping it leaves Logs empty for this IDE.
 - There is **no** “direct path” that skips this. Not git log, git status, “what shipped”, smoke tests, or “I didn’t need the router.” Claude PreToolUse **denies** other tools without `.raven/.route-stamp`. Codex/Cursor/AntiGravity/Grok have no that hook — **empty dashboard Logs = you skipped**. That is the proof, not a design exemption.
 - **Line 1** = printed `🔀 Router · …`
 - **Line 2** = printed `💰 total-cost= last_turn= est=`
