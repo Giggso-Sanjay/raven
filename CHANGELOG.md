@@ -5,6 +5,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 
 ---
 
+## [5.5.4] — 2026-08-23 — GitHub version banner on session start
+
+- Session start + first router turn: current vs GitHub latest; upgrade prompt; 5 bullets.
+
 ## [5.5.3] — 2026-08-23 — plugin-root first-load
 
 - Current zip: `plugin/raven-plugin-v5.5.3.zip`. Tag `v5.5.3`.

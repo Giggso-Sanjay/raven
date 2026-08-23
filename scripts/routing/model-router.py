@@ -483,12 +483,21 @@ def main():
     # Mode toggles — used by the /router skill, not the hook
     if args.session_start or args.enable or args.disable or args.status:
         if args.session_start:
+            try:
+                _ops = Path(__file__).resolve().parents[1] / "ops"
+                if str(_ops) not in sys.path:
+                    sys.path.insert(0, str(_ops))
+                import github_version as _gv
+
+                _gv.maybe_print_once(always=True)
+            except Exception:
+                pass
             state = arm_base_router()
             host = state.get("backend") or detect_host()
             models = _load_model_env(host)
             edu = _educate_mode()
             rules = _host_rules(host)
-            ver = "5.5.3"
+            ver = "5.5.4"
             try:
                 vp = _find_project_root() / "raven-core" / "VERSION"
                 if vp.is_file():
@@ -568,6 +577,16 @@ def main():
         parser.error("--prompt is required outside --hook / --write-json mode")
     if args.prompt == "":
         return 0
+
+    try:
+        _ops = Path(__file__).resolve().parents[1] / "ops"
+        if str(_ops) not in sys.path:
+            sys.path.insert(0, str(_ops))
+        import github_version as _gv
+
+        _gv.maybe_print_once(always=False)
+    except Exception:
+        pass
 
     # Method B inference — if called from a hook context, override to overhead
     # CLAUDE_HOOK_EVENT is set by Claude Code when a hook fires

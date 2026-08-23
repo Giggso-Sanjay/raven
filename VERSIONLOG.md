@@ -5,6 +5,14 @@ adds an entry here (newest first), and must pass `scripts/check-version-consiste
 (CI: `raven-version-consistency-check`). Historical changelogs in `docs/` are
 never rewritten — this file is the roll-up index.
 
+## v5.5.4 — 2026-08-23 — Session-start GitHub version check (patch)
+
+On session start and the first router turn, Raven checks github.com/giggsoinc/raven
+tags. Prints current **or** newer-available and asks to upgrade. Lists up to five
+bullets from VERSIONLOG for that version. Fail-soft if offline. Tag `v5.5.4`.
+
+---
+
 ## v5.5.3 — 2026-08-23 — Plugin-root first-load copies engine into app repo (patch)
 
 Public Codex/Cursor often run in an app repo with no `scripts/`. `raven-first.py`
