@@ -98,3 +98,10 @@ class TestIdeBoot(unittest.TestCase):
         self.assertTrue(self.mod.claim_browser_open(lock, force=False))
         self.assertFalse(self.mod.claim_browser_open(lock, force=False))
         self.assertTrue(self.mod.claim_browser_open(lock, force=True))
+
+    def test_print_includes_first_load_line(self):
+        src = (ROOT / "scripts" / "memory" / "ide-boot.py").read_text()
+        self.assertIn(
+            "first_load=run ide-boot then Read memory= if load=1 then model-router --session-start",
+            src,
+        )

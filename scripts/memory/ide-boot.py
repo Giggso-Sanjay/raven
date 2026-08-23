@@ -242,6 +242,7 @@ def main() -> int:
     if "--json" in argv:
         print(json.dumps(r, separators=(",", ":")))
     else:
+        # Always print host/rules/memory/load/educate/route — first-load UX for every IDE
         print(f"dashboard={r.get('dashboard','')}")
         print(f"host={r['host']}")
         print(f"rules={r['rules']}")
@@ -253,6 +254,9 @@ def main() -> int:
         print(f"educate={r.get('educate','guided')}")
         print(f"route={r.get('route','')}")
         print(f"expected_route={r.get('expected_route','')}")
+        print(
+            "first_load=run ide-boot then Read memory= if load=1 then model-router --session-start"
+        )
     marker = _marker(ROOT)
     should_rebuild = session_start or force_open
     if should_rebuild:
@@ -279,5 +283,9 @@ if __name__ == "__main__":
     try:
         raise SystemExit(main())
     except Exception:
-        print("dashboard=\nhost=unknown\nrules=AGENTS.md\nmemory=\nload=0\nokf=\ngraph_cli=\nmcp=\neducate=guided")
+        print(
+            "dashboard=\nhost=unknown\nrules=AGENTS.md\nmemory=\nload=0\nokf=\ngraph_cli=\nmcp=\n"
+            "educate=guided\nroute=\nexpected_route=\n"
+            "first_load=run ide-boot then Read memory= if load=1 then model-router --session-start"
+        )
         raise SystemExit(0)

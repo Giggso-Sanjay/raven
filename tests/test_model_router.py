@@ -71,6 +71,12 @@ class TestBaseRouter(unittest.TestCase):
         self.assertIn("--session-start", src)
         self.assertIn("expected route", src)
 
+    def test_session_start_banner_lists_rules_and_ides(self):
+        src = (ROOT / "scripts" / "routing" / "model-router.py").read_text()
+        self.assertIn("rules={rules}", src)
+        self.assertIn("Cursor/Windsurf/VSCode", src)
+        self.assertIn("def _host_rules", src)
+
     def test_agents_dir_detects_antigravity_without_env(self):
         with tempfile.TemporaryDirectory() as td:
             root = Path(td)

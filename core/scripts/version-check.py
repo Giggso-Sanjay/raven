@@ -45,6 +45,7 @@ RAVEN_RELEASES = [
     "5.0.0",
     "5.5.0",
     "5.5.1",
+    "5.5.2",
 ]
 
 RAVEN_LATEST = RAVEN_RELEASES[-1]

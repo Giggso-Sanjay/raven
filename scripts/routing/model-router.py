@@ -181,6 +181,20 @@ def _educate_mode() -> str:
         return "guided"
 
 
+def _host_rules(host: str) -> str:
+    """Rules file path for this host from .raven/boot.json."""
+    boot = _find_project_root() / ".raven" / "boot.json"
+    try:
+        data = json.loads(boot.read_text(encoding="utf-8"))
+        hosts = data.get("hosts") or {}
+        rules = (hosts.get(host) or {}).get("rules")
+        if rules:
+            return str(rules)
+        return str(data.get("default_rules") or "AGENTS.md")
+    except (OSError, json.JSONDecodeError, TypeError):
+        return "AGENTS.md"
+
+
 def format_turn_toast(tier: str, model: str, reasons: List[str], host: str = "", prompt_chars: int = 0) -> str:
     """One line every turn: host, tier, recommend, why, applied=false."""
     host = host or detect_host()
@@ -473,7 +487,8 @@ def main():
             host = state.get("backend") or detect_host()
             models = _load_model_env(host)
             edu = _educate_mode()
-            ver = "5.5.1"
+            rules = _host_rules(host)
+            ver = "5.5.2"
             try:
                 vp = _find_project_root() / "raven-core" / "VERSION"
                 if vp.is_file():
@@ -481,10 +496,12 @@ def main():
             except OSError:
                 pass
             print(
-                f"🪶 Raven v{ver} session start · host={host} · educate={edu}\n"
+                f"🪶 Raven v{ver} session start · host={host} · rules={rules} · educate={edu}\n"
                 f"expected route: SIMPLE→{models.get('SIMPLE','')} "
                 f"MEDIUM→{models.get('MEDIUM','')} "
                 f"COMPLEX→{models.get('COMPLEX','')}\n"
+                "First load (Claude/Codex/Grok/AntiGravity/Cursor/Windsurf/VSCode/Gemini/Replit): "
+                "ide-boot → Read memory= if load=1 → this --session-start → every-turn router.\n"
                 "🔀 Base router ON (mandatory). First user turn: "
                 "bash scripts/raven-python.sh scripts/routing/model-router.py --prompt \"…\"\n"
                 "applied=false until this IDE spawns/swaps. "

@@ -3,4 +3,11 @@ description: Raven router and cost must run every user turn
 alwaysApply: true
 ---
 
-First load: `ide-boot.py` then Read `memory=` card if load=1. Every turn before any other tool: `bash scripts/raven-python.sh scripts/routing/model-router.py --prompt "<user message>"`. Print 🔀 then 💰 then educate= expected= then session= then Intent:. `--session-start` on first load. git log/status is not an exemption. educate=guided: briefing then STOP until go ahead.
+## First load (same UX every IDE)
+
+1. `bash scripts/raven-python.sh scripts/memory/ide-boot.py` — print host/rules/memory/load/educate/route/expected_route/first_load
+2. If `load=1`, Read only the `memory=` card
+3. `bash scripts/raven-python.sh scripts/routing/model-router.py --session-start` — print banner
+4. Every later turn before any other tool: `bash scripts/raven-python.sh scripts/routing/model-router.py --prompt "<user message>"`
+
+Print 🔀 then 💰 then educate= expected= then session= then Intent:. git log/status is not an exemption. educate=guided: briefing then STOP until go ahead.

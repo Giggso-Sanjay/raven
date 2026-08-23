@@ -5,6 +5,12 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 
 ---
 
+## [5.5.2] — 2026-08-23 — first-load all IDEs
+
+- Current zip: `plugin/raven-plugin-v5.5.2.zip`. Tag `v5.5.2`.
+- Unified first-load: ide-boot → memory card → session-start → every-turn router (Cursor/Windsurf/VS Code/Gemini/Replit included).
+- `ide-boot` prints `first_load=`; session-start lists host rules + educate + tiers.
+
 ## [5.5.1] — 2026-08-23 — host router + educate; install pin
 
 - Current zip: `plugin/raven-plugin-v5.5.1.zip`. Tag `v5.5.1`.

@@ -3,6 +3,21 @@
 A reply without `🔀 Router` as the first line is a defect. Do not substitute
 `Raven: routed ->` or a “what can you do” banner.
 
+## First load (same UX every IDE)
+
+```
+bash scripts/raven-python.sh scripts/memory/ide-boot.py
+```
+
+Print `host=` `rules=` `memory=` `load=` `educate=` `route=` `expected_route=` `first_load=`.
+If `load=1`, Read **only** the `memory=` card. That is the vault card. Then:
+
+```
+bash scripts/raven-python.sh scripts/routing/model-router.py --session-start
+```
+
+Print that banner (version, host, rules, educate, expected tiers). Then load `rules=` (this file / `AGENTS.md` / `CLAUDE.md`).
+
 ## Every user message, before any other tool
 
 ```
@@ -10,15 +25,6 @@ bash scripts/raven-python.sh scripts/routing/model-router.py --prompt "<full use
 ```
 
 Print that stdout first (`🔀` `💰` `educate=` `expected=`). Then `session=` and `Intent:`.
-
-## First load this session
-
-```
-bash scripts/raven-python.sh scripts/memory/ide-boot.py
-bash scripts/raven-python.sh scripts/routing/model-router.py --session-start
-```
-
-If `load=1`, Read **only** the `memory=` card. That is the vault card. Then load `rules=` (this file / `AGENTS.md` / `CLAUDE.md`).
 
 ## Educate
 

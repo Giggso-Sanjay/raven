@@ -5,6 +5,15 @@ adds an entry here (newest first), and must pass `scripts/check-version-consiste
 (CI: `raven-version-consistency-check`). Historical changelogs in `docs/` are
 never rewritten — this file is the roll-up index.
 
+## v5.5.2 — 2026-08-23 — First-load UX on every IDE (patch)
+
+Same first-load sequence for Claude, Codex, Grok, AntiGravity, Cursor, Windsurf,
+VS Code, Gemini, and Replit: `ide-boot` → Read `memory=` if `load=1` →
+`model-router --session-start` → every-turn router. Session-start banner lists
+this host's rules file, educate mode, and expected tiers. Tag `v5.5.2`.
+
+---
+
 ## v5.5.1 — 2026-08-23 — Host router + educate on every IDE (patch)
 
 Fixes silent routing on Claude (wrong hook JSON key / `$PROMPT`) and honor-system
