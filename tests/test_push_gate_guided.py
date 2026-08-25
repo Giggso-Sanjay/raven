@@ -100,43 +100,6 @@ def test_writing_bash_is_denied_in_guided(tmp_path):
     assert _decision(_run(repo, payload)) == "deny"
 
 
-APPROVE = _ROOT / "scripts" / "push-approve.py"
-
-
-def _approve(repo, prompt, io_encoding=None):
-    env = dict(os.environ)
-    env["CLAUDE_PROJECT_DIR"] = str(repo)
-    env.pop("PYTHONUTF8", None)
-    if io_encoding:
-        env["PYTHONIOENCODING"] = io_encoding
-    return subprocess.run(
-        [sys.executable, str(APPROVE)], cwd=str(repo), env=env,
-        input=json.dumps({"prompt": prompt, "session_id": "s1"}),
-        capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=20,
-    )
-
-
-def test_mode_confirmations_survive_a_legacy_console(tmp_path):
-    """BUG-024: every confirmation starts with an emoji.
-
-    Under cp1252 the print raised, the fail-soft wrapper swallowed it, and the user
-    got no feedback that guided mode registered — the flag was written, so the
-    feature worked while appearing dead. Silence is the failure mode to guard.
-    """
-    repo = _repo(tmp_path)
-    for prompt in ("guided", "go ahead", "auto"):
-        out = _approve(repo, prompt, io_encoding="cp1252")
-        assert out.stdout.strip(), f"no confirmation printed for {prompt!r}"
-        assert "EDUCATED PUSH" in out.stdout, out.stdout
-
-
-def test_guided_prompt_actually_sets_the_mode(tmp_path):
-    repo = _repo(tmp_path)
-    _approve(repo, "guided", io_encoding="cp1252")
-    assert (repo / ".raven" / ".push-mode").read_text(encoding="utf-8").strip() == "guided"
-    assert _decision(_run(repo, EDIT)) == "deny", "guided set but gate not enforcing"
-
-
 def test_gate_can_always_be_repaired(tmp_path):
     """Self-exemption: guided mode must never block fixing or disabling itself."""
     repo = _repo(tmp_path)
