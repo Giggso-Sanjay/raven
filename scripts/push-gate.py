@@ -1,28 +1,37 @@
 #!/usr/bin/env python3
-"""push-gate.py — PreToolUse hook for the Educated Push Contract (advisory).
+"""push-gate.py — PreToolUse hook for the Educated Push Contract.
 
-Educational, never blocking: the first mutating action of a session surfaces a
-one-time reminder of the briefing loop (what/how/files -> go-ahead -> confirm),
-then the gate stays silent. It NEVER denies a tool call — the contract is taught,
-not enforced (user decision 2026-08-07: "educated is educational — it should not
-block anything").
+Two modes, chosen per session. ADVISORY IS THE DEFAULT — the 2026-08-07 decision
+("educated is educational — it should not block anything") still governs any
+session that has not explicitly opted in.
 
-An opt-in `guided` mode that denied until approval was added and then removed at
-the user's request (2026-08-13). Reasons recorded in bug-fix-log.md BUG-023: it
-was never asked for, it reversed a decision made deliberately after c8c5c2e's
-hard gate blocked its own diagnostics, and it produced two bugs of its own
-(BUG-024, BUG-025) that existed only because a second mode existed. Removing the
-deny path removes those failure modes with it.
+  auto / unset (DEFAULT)  the first mutating action surfaces a one-time reminder
+                          of the briefing loop, then the gate stays silent. Never
+                          denies anything.
+  guided (opt-in)         say "guided" and mutations are denied until you reply
+                          "go ahead" / "approved" / "GO" / "proceed". The approval
+                          expires after 1 hour. Say "auto" to leave guided mode.
 
-Markers live in .raven/ (.push-notice-shown, and .model-disclosed for the model
-router) and are cleared by `push-gate.py --reset`, which SessionStart calls.
-Fail-soft: any internal error exits 0, so a broken gate can never brick a session.
+Why guided is opt-in and not the default: the hard-enforced version (c8c5c2e) was
+reverted one commit later because it blocked its own diagnostics, counted
+`2>/dev/null` as a write, and blocked the very Edit needed to fix itself. Those
+were allowlist bugs, not a flaw in the concept — both are fixed here, plus a
+self-exemption so the gate can never lock you out of repairing it:
+
+  * `.raven/` paths and push-gate.py / push-approve.py are always allowed
+  * Bash commands touching those scripts, or carrying --status/--reset, pass
+  * read-only Bash passes (2> / 2>> are not writes — the old regex said they were)
+
+Markers live in .raven/ (.push-notice-shown, .push-mode, .push-approved) and are
+cleared by `push-gate.py --reset`, which SessionStart calls. Fail-soft: any
+internal error exits 0, so a broken gate can never brick a session.
 """
 
 import json
 import os
 import re
 import sys
+import time
 
 # Raven output is emoji-forward and a console/pipe defaults to cp1252 on Windows, so
 # print() raises UnicodeEncodeError and any fail-soft wrapper swallows it — the script
@@ -38,9 +47,19 @@ NOTICE = (
     "🪶 Educated Push (advisory): for non-trivial changes, Raven's loop is — "
     "briefing (WHAT/HOW/files, ≤200 words) → your go-ahead → execute → "
     "confirmation (≤150 words). This is a reminder, not a block; the action "
-    "is proceeding. Shown once per session."
+    "is proceeding. Shown once per session. Say 'guided' to make it enforced."
 )
 
+DENY_REASON = (
+    "🎓 Educated Push — GUIDED mode. Before this change, post a briefing "
+    "(≤200 words, bullets): WHAT will be done, HOW it works, WHAT changes "
+    "(files, db, config). Then STOP and wait. When the user replies "
+    "'go ahead' / 'approved' / 'GO' / 'proceed', the gate opens for this "
+    "change; afterwards confirm in ≤150 words with the files touched. "
+    "Say 'auto' to return to advisory mode."
+)
+
+APPROVAL_TTL_SECONDS = 3600  # CLAUDE.md: approval expires after 1 hour regardless
 
 # Bash command heads that are always read-only research — no reminder needed.
 READ_ONLY_HEADS = {
@@ -122,8 +141,42 @@ def reset_markers() -> None:
             pass  # absent is the normal case
 
 
+def flag_path(name: str) -> str:
+    return os.path.join(repo_root(), ".raven", name)
 
 
+def session_mode() -> str:
+    """'guided' only when explicitly chosen. Anything else means advisory."""
+    try:
+        with open(flag_path(".push-mode"), encoding="utf-8") as fh:
+            return fh.read().strip().lower()
+    except OSError:
+        return ""
+
+
+def approval_is_fresh() -> bool:
+    path = flag_path(".push-approved")
+    try:
+        return (time.time() - os.path.getmtime(path)) < APPROVAL_TTL_SECONDS
+    except OSError:
+        return False
+
+
+def is_self_exempt(tool: str, tool_input: dict) -> bool:
+    """Never deny what is needed to inspect, repair, or disable the gate itself.
+
+    c8c5c2e's fatal flaw was denying its own diagnostics and the Edit that would
+    have fixed it. A gate that can trap you is worse than no gate.
+    """
+    path = str(tool_input.get("file_path") or "").replace("\\", "/")
+    if path and ("/.raven/" in path or path.endswith(("push-gate.py", "push-approve.py"))):
+        return True
+    if tool == "Bash":
+        command = tool_input.get("command", "")
+        if any(tok in command for tok in ("push-gate.py", "push-approve.py",
+                                         "--status", "--reset")):
+            return True
+    return False
 
 
 def _emit(decision: str, reason: str, message: str = "") -> None:
@@ -153,7 +206,14 @@ def main() -> None:
     else:
         mutating = tool in ("Write", "Edit", "MultiEdit", "NotebookEdit")
 
-    if not mutating or os.path.exists(marker_path()):
+    if not mutating or is_self_exempt(tool, tool_input):
+        sys.exit(0)
+
+    if session_mode() == "guided" and not approval_is_fresh():
+        _emit("deny", DENY_REASON)
+        sys.exit(0)
+
+    if os.path.exists(marker_path()):
         sys.exit(0)
 
     os.makedirs(os.path.dirname(marker_path()), exist_ok=True)

@@ -1,0 +1,209 @@
+"""Guided mode denies until approval; advisory stays the default (BUG-023).
+
+The hard-enforced gate (c8c5c2e) was reverted one commit later because it blocked
+its own diagnostics, counted `2>/dev/null` as a write, and blocked the very Edit
+needed to fix it. Those were allowlist bugs, not a flaw in enforcement — so guided
+mode is opt-in and carries a self-exemption. These tests pin both halves: that
+enforcement works when asked for, and that it can never trap the user.
+"""
+import json
+import os
+import pathlib
+import subprocess
+import sys
+import time
+
+_ROOT = pathlib.Path(__file__).parent.parent
+GATE = _ROOT / "scripts" / "push-gate.py"
+
+EDIT = {"tool_name": "Edit", "tool_input": {"file_path": "app.py"}, "session_id": "s1"}
+
+
+def _repo(tmp_path):
+    (tmp_path / ".git").mkdir()
+    (tmp_path / ".raven").mkdir()
+    return tmp_path
+
+
+def _run(repo, payload):
+    env = dict(os.environ)
+    env["CLAUDE_PROJECT_DIR"] = str(repo)
+    proc = subprocess.run(
+        [sys.executable, str(GATE)], cwd=str(repo), env=env,
+        input=json.dumps(payload), capture_output=True, text=True,
+        encoding="utf-8", timeout=20,
+    )
+    if not proc.stdout.strip():
+        return None
+    return json.loads(proc.stdout)
+
+
+def _decision(out):
+    return out["hookSpecificOutput"]["permissionDecision"] if out else "silent"
+
+
+def _mode(repo, value):
+    (repo / ".raven" / ".push-mode").write_text(value, encoding="utf-8")
+
+
+def test_default_is_advisory_never_denies(tmp_path):
+    """No .push-mode file — the bb40ee0 default must be untouched."""
+    repo = _repo(tmp_path)
+    assert _decision(_run(repo, EDIT)) == "allow"
+
+
+def test_auto_mode_never_denies(tmp_path):
+    repo = _repo(tmp_path)
+    _mode(repo, "auto")
+    assert _decision(_run(repo, EDIT)) == "allow"
+
+
+def test_guided_denies_without_approval(tmp_path):
+    repo = _repo(tmp_path)
+    _mode(repo, "guided")
+    out = _run(repo, EDIT)
+    assert _decision(out) == "deny"
+    assert "briefing" in out["hookSpecificOutput"]["permissionDecisionReason"]
+
+
+def test_guided_allows_with_fresh_approval(tmp_path):
+    repo = _repo(tmp_path)
+    _mode(repo, "guided")
+    (repo / ".raven" / ".push-approved").write_text("go ahead", encoding="utf-8")
+    assert _decision(_run(repo, EDIT)) != "deny"
+
+
+def test_guided_denies_when_approval_expired(tmp_path):
+    repo = _repo(tmp_path)
+    _mode(repo, "guided")
+    stale = repo / ".raven" / ".push-approved"
+    stale.write_text("go ahead", encoding="utf-8")
+    old = time.time() - 7200  # 2h > 1h TTL
+    os.utime(stale, (old, old))
+    assert _decision(_run(repo, EDIT)) == "deny"
+
+
+def test_read_only_bash_passes_in_guided(tmp_path):
+    """The c8c5c2e bug: `2>/dev/null` is stderr silencing, not a write."""
+    repo = _repo(tmp_path)
+    _mode(repo, "guided")
+    for command in ("ls -la", "git status", "cat app.py 2>/dev/null",
+                    "grep -rn foo . 2>>err.log"):
+        payload = {"tool_name": "Bash", "tool_input": {"command": command}}
+        assert _decision(_run(repo, payload)) != "deny", command
+
+
+def test_writing_bash_is_denied_in_guided(tmp_path):
+    repo = _repo(tmp_path)
+    _mode(repo, "guided")
+    payload = {"tool_name": "Bash", "tool_input": {"command": "echo x > out.txt"}}
+    assert _decision(_run(repo, payload)) == "deny"
+
+
+APPROVE = _ROOT / "scripts" / "push-approve.py"
+
+
+def _approve(repo, prompt, io_encoding=None):
+    env = dict(os.environ)
+    env["CLAUDE_PROJECT_DIR"] = str(repo)
+    env.pop("PYTHONUTF8", None)
+    if io_encoding:
+        env["PYTHONIOENCODING"] = io_encoding
+    return subprocess.run(
+        [sys.executable, str(APPROVE)], cwd=str(repo), env=env,
+        input=json.dumps({"prompt": prompt, "session_id": "s1"}),
+        capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=20,
+    )
+
+
+def test_mode_confirmations_survive_a_legacy_console(tmp_path):
+    """BUG-024: every confirmation starts with an emoji.
+
+    Under cp1252 the print raised, the fail-soft wrapper swallowed it, and the user
+    got no feedback that guided mode registered — the flag was written, so the
+    feature worked while appearing dead. Silence is the failure mode to guard.
+    """
+    repo = _repo(tmp_path)
+    for prompt in ("guided", "go ahead", "auto"):
+        out = _approve(repo, prompt, io_encoding="cp1252")
+        assert out.stdout.strip(), f"no confirmation printed for {prompt!r}"
+        assert "EDUCATED PUSH" in out.stdout, out.stdout
+
+
+def test_guided_prompt_actually_sets_the_mode(tmp_path):
+    repo = _repo(tmp_path)
+    _approve(repo, "guided", io_encoding="cp1252")
+    assert (repo / ".raven" / ".push-mode").read_text(encoding="utf-8").strip() == "guided"
+    assert _decision(_run(repo, EDIT)) == "deny", "guided set but gate not enforcing"
+
+
+def _patterns():
+    import importlib.util
+    spec = importlib.util.spec_from_file_location("_push_approve", APPROVE)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+GUIDED_YES = [
+    "guided",
+    "turn on enforcement:\n  guided",   # the exact live failure (BUG-025)
+    "turn on enforcement: guided",
+    "guided mode",
+    "enable guided",
+    "switch to guided mode",
+    "activate guided",
+]
+GUIDED_NO = [
+    "write a guided tour page",
+    "the guided setup docs are stale",
+    "add a guided onboarding flow to the frontend",
+    "refactor app.py",
+]
+AUTO_YES = ["auto", "auto mode", "switch to auto", "turn on auto"]
+AUTO_NO = ["auto-generate the docs", "add autocomplete to the search box",
+           "automate the deploy"]
+
+
+def test_mode_words_match_natural_phrasings():
+    """The old pattern anchored `guided` to the start of the WHOLE message.
+
+    "turn on enforcement:\\n  guided" matched nothing, so the mode silently stayed
+    advisory and the instruction read as an unrelated task — observed live.
+    """
+    mod = _patterns()
+    for p in GUIDED_YES:
+        assert mod.GUIDED_PATTERN.search(p), f"should enable guided: {p!r}"
+    for p in AUTO_YES:
+        assert mod.AUTO_PATTERN.search(p), f"should enable auto: {p!r}"
+
+
+def test_mode_words_ignore_incidental_use():
+    """A feature request that happens to say "guided" must not flip the gate."""
+    mod = _patterns()
+    for p in GUIDED_NO:
+        assert not mod.GUIDED_PATTERN.search(p), f"false positive: {p!r}"
+    for p in AUTO_NO:
+        assert not mod.AUTO_PATTERN.search(p), f"false positive: {p!r}"
+
+
+def test_natural_phrasing_end_to_end_denies(tmp_path):
+    """Prose form must set the mode AND make the gate enforce."""
+    repo = _repo(tmp_path)
+    _approve(repo, "turn on enforcement:\n  guided", io_encoding="cp1252")
+    assert (repo / ".raven" / ".push-mode").read_text(encoding="utf-8").strip() == "guided"
+    assert _decision(_run(repo, EDIT)) == "deny"
+
+
+def test_gate_can_always_be_repaired(tmp_path):
+    """Self-exemption: guided mode must never block fixing or disabling itself."""
+    repo = _repo(tmp_path)
+    _mode(repo, "guided")
+    exempt = [
+        {"tool_name": "Edit", "tool_input": {"file_path": str(repo / "scripts" / "push-gate.py")}},
+        {"tool_name": "Write", "tool_input": {"file_path": str(repo / ".raven" / ".push-mode")}},
+        {"tool_name": "Bash", "tool_input": {"command": "python3 scripts/push-gate.py --reset"}},
+        {"tool_name": "Bash", "tool_input": {"command": "python3 scripts/notify.py --status"}},
+    ]
+    for payload in exempt:
+        assert _decision(_run(repo, payload)) != "deny", payload
