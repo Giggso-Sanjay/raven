@@ -41,6 +41,7 @@ GATES = [
     ("distribution-coverage", ["scripts/check-distribution-coverage.py"]),
     ("skill-manifest", ["scripts/build-skill-manifest.py", "--check"]),
     ("version-consistency", ["scripts/check-version-consistency.py"]),
+    ("counts", ["scripts/check-counts.py"]),
 ]
 
 

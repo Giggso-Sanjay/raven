@@ -4,7 +4,7 @@
 #
 # What this does (one command, done forever):
 #   1. Downloads Raven to ~/.raven/
-#   2. Wires ALL 35 skills + 10 agents into Claude Code globally (~/.claude/)
+#   2. Wires ALL 63 skills + 10 agents into Claude Code globally (~/.claude/)
 #   3. Registers the MCP server globally
 #   4. Makes raven-setup available as a command
 #
@@ -59,7 +59,7 @@ echo -e "${B}Installing into Claude Code (~/.claude/)...${N}"
 
 mkdir -p "$CLAUDE_DIR"/{skills,agents,commands,scripts}
 
-# ── All 35 skills ──
+# ── All 63 skills ──
 SKILLS_INSTALLED=0
 for skill_dir in "$RAVEN_DIR/core/skills"/*/; do
     skill_name=$(basename "$skill_dir")
@@ -199,7 +199,7 @@ echo -e "${G}  ✅ Raven installed globally${N}"
 echo -e "${W}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${N}"
 echo ""
 echo -e "  ${W}What's now available in every Claude Code session:${N}"
-echo -e "  • 35 skills (Andie, all 23 specialists, raven-core…)"
+echo -e "  • 63 skills (Andie, every specialist, raven-core…)"
 echo -e "  • 10 guard agents (always on)"
 echo -e "  • All commands (/raven-debug, /raven-review…)"
 echo -e "  • MCP tools (raven_status, raven_cve_check…)"

@@ -3,7 +3,7 @@
 ## Overview
 
 Raven is a Claude Code plugin that installs engineering discipline into every Claude session:
-61 skills · 10 guard agents · 12 slash commands · dynamic expert generation.
+63 skills · 10 guard agents · 12 slash commands · dynamic expert generation.
 
 Raven is **not** listed in an Anthropic-hosted plugin marketplace — you install from a local copy, not `claude plugin install giggsoinc/raven`.
 
@@ -24,7 +24,6 @@ git clone https://github.com/giggsoinc/raven.git
 claude plugin install ./raven/plugin
 ```
 
-Or download `raven-plugin-v4.1.0.zip` from the [latest release](https://github.com/giggsoinc/raven/releases/latest), unzip it, and point `claude plugin install` at the extracted `plugin/` folder.
 
 ---
 
@@ -35,7 +34,7 @@ Or download `raven-plugin-v4.1.0.zip` from the [latest release](https://github.c
 3. `Settings → Integrations → Plugins → Upload Plugin`
 4. Upload the zip — the console validates it and adds it to your org's plugin library
 5. Toggle **Enable for organisation** (or scope it to specific teams/roles)
-6. Verify: ask Claude *"What Raven skills do you have available?"* — expect a list of 61 skills and 10 guard agents
+6. Verify: ask Claude *"What Raven skills do you have available?"* — expect a list of 63 skills and 10 guard agents
 
 ---
 

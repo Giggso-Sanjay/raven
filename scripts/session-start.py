@@ -379,7 +379,13 @@ def build_routing(providers: list[dict]) -> dict:
     medium_pick  = pick(medium, simple_pick)
     complex_pick = pick(high,   medium_pick)
 
-    def fmt(t): return f"{t[0]}/{t[1]}" if t else "anthropic/claude-sonnet-4-5"
+    # Return "" when nothing was picked. The old else-branch substituted
+    # "anthropic/claude-sonnet-4-5" for EVERY unpicked tier, which made
+    # validate_routing's "FAIL — no model configured" branch unreachable: with
+    # no API keys every pick is None, all four tiers got that string, and the
+    # self-check printed PASS four times over a routing table that was never
+    # configured. A probe whose failure mode is PASS is not a probe.
+    def fmt(t): return f"{t[0]}/{t[1]}" if t else ""
 
     return {
         "LOCAL_ONLY": fmt(local_pick),
@@ -396,6 +402,15 @@ def validate_routing(routing: dict) -> list[str]:
     session start instead of failing silently mid-session.
     """
     lines = ["🔎 Routing self-check:"]
+    # No provider keys at all is the normal subscription case, not a
+    # misconfiguration. Say that once instead of four alarming FAILs — but never
+    # by inventing a model, which is what fmt() used to do (four false PASSes).
+    if not any(routing.get(t) for t in ("LOCAL_ONLY", "SIMPLE", "MEDIUM", "COMPLEX")):
+        lines.append("   UNCONFIGURED — no provider API keys found, so there is no "
+                     "tier table.")
+        lines.append("   The router is advisory only; your session model is whatever "
+                     "/model is set to.")
+        return lines
     for tier in ("LOCAL_ONLY", "SIMPLE", "MEDIUM", "COMPLEX"):
         target = routing.get(tier, "")
         model = target.split("/", 1)[-1] if "/" in target else target
@@ -556,11 +571,11 @@ def format_context(project: dict, providers: list[dict], routing: dict, model_en
     lines.append("")
     lines.append("After user responds:")
     lines.append("  ├─ If user asks 'what can you do' / curious / capabilities:")
-    lines.append("  │     → Use PROGRESSIVE DISCLOSURE — do NOT dump all 61 skills.")
+    lines.append("  │     → Use PROGRESSIVE DISCLOSURE — do NOT dump all 63 skills.")
     lines.append("  │       Present three tiers, plain English:")
     lines.append("  │       • Always on:  secret + CVE guards at commit · cost-aware routing")
     lines.append("  │       • Just ask:   /andie (plan/design) · /andie-jr (debug a bug)")
-    lines.append("  │       • Deep bench: 61 domain specialists load only when your work matches")
+    lines.append("  │       • Deep bench: 63 domain specialists load only when your work matches")
     lines.append("  │     → End with: 'Ready? Say Let\\'s Go.'")
     lines.append("  │")
     lines.append("  └─ If user says 'Let\\'s Go' / 'go' / states a task:")

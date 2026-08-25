@@ -15,7 +15,9 @@ directions. That is the exact failure mode this rule exists to prevent.
 Before you write a number, a capability, or a "Raven does X" claim:
 
 1. **Verify it against the running code**, not memory and not an older doc.
-   - Skill count? `bash plugin/make-plugin.sh` and read "N skills at ZIP root".
+   - Skill count? `find skills -name SKILL.md | wc -l`. This is the same formula
+     `plugin/make-plugin.sh` uses, but it runs without `zip` installed — the build
+     script exits 127 on a machine without it, which is how 61 survived in 19 places.
    - Guard/hook behavior? Read the script. Confirm it actually fires.
    - A feature? Run it. If it only half-works, say so.
 2. **If it is not built, do not document it as built.** "On the roadmap" is fine
@@ -30,9 +32,19 @@ This is enforced in two places:
 
 | Thing | How to get the real number |
 |---|---|
-| Skills shipped | `bash plugin/make-plugin.sh` → "N skills at ZIP root" |
-| Guard agents | `ls agents/*.md \| wc -l` |
-| Scripts bundled | the build report's "N OSS scripts bundled" line |
+| Skills shipped | `find skills -name SKILL.md \| wc -l` |
+| Guard agents | `find agents -name '*.md' \| wc -l` |
+| Slash commands | `find core/commands -name '*.md' \| wc -l` |
+| Scripts bundled | the `make-plugin.sh` report's "N OSS scripts bundled" line |
+
+Every command above works with no extra tooling. Do **not** make the authoritative
+count depend on `make-plugin.sh` alone: it needs `zip`, which is absent on a default
+Windows install, so the mandated check silently became unrunnable and no one noticed
+the number was wrong.
+
+Counts are also enforced at commit by `scripts/check-counts.py` (gate 7) — it recounts
+from disk and fails if any tracked file disagrees. Do not hand-edit a count without
+running it.
 
 ## Single source of truth
 
@@ -40,14 +52,25 @@ Some directories are intentionally the canonical source; their mirrors are built
 from them, never edited directly:
 
 - **Skills**: root `skills/` is canonical. The plugin build bundles it.
-- **Scripts**: root `scripts/` is canonical for the plugin bundle. `raven-core/`
-  holds the copies the live `.claude/scripts/` symlinks use — **keep them in sync**
-  (they are byte-identical except where a sync is mid-flight).
+- **Scripts**: root `scripts/` is canonical. `raven-core/`, `.claude/scripts/` and
+  `plugin/scripts/` are **symlink mirrors** of it (git mode `120000`), e.g.
+  `.claude/scripts/push-gate.py -> ../../scripts/push-gate.py`. They are not copies
+  and cannot drift, so there is nothing to keep in sync by hand — edit `scripts/`
+  and every mirror follows. `scripts/check-engine-drift.py` (gate 1) enforces this
+  and fails on any mirror entry that is a real file instead of a symlink.
+  Note `raven-core/` is a *partial* mirror; the gate only checks entries that exist,
+  so adding a script there is optional but adding it as a **copy** is not.
 - **Commands**: `core/commands/` is canonical. The build bundles it.
 - **Pre-commit hook**: `core/hooks/pre-commit` is the shipped source.
 
-If you edit a guard/hook script, update **both** `scripts/` and `raven-core/`,
-then rebuild the plugin (`bash plugin/make-plugin.sh`) and commit the new ZIP.
+If you edit a guard/hook script, edit it in `scripts/` only — the mirrors are
+symlinks and follow automatically. Then run `python scripts/check-all-gates.py --tests`
+and confirm exit 0.
+
+There is no ZIP to rebuild. `plugin/raven-plugin-v4.1.0.zip` was removed (2026-08-13):
+it was a v4.1.0 artifact still tracked in a 5.0.0 repo, stale for many releases, while
+the real distribution path is the marketplace clone. `make-plugin.sh` is kept for its
+air-gap check (it aborts if enterprise scripts reach the bundle), not as a release step.
 
 ## Deletions
 

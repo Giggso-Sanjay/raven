@@ -227,7 +227,7 @@ echo -e "${G}✅ manifest.org.json → $RAVEN_SYSTEM/manifest.org.json${N}"
 # ─── PROVISION EXISTING USERS ────────────────────────────────────────────────
 echo ""
 echo -e "  ${B}Provision skills/agents to existing users' ~/.claude/ directories?${N}" >/dev/tty
-echo -e "  ${Y}This wires all 35 skills for every existing developer on this machine.${N}" >/dev/tty
+echo -e "  ${Y}This wires all 63 skills for every existing developer on this machine.${N}" >/dev/tty
 echo -e "  1) Yes — provision all users now" >/dev/tty
 echo -e "  2) No  — developers run install.sh themselves on first login" >/dev/tty
 read -p "  → " PROVISION </dev/tty
@@ -246,7 +246,7 @@ if [[ "$PROVISION" == "1" ]]; then
         user_claude="$user_home/.claude"
         mkdir -p "$user_claude"/{skills,agents,commands,scripts}
 
-        # Copy all 35 skills
+        # Copy all 63 skills
         for skill_dir in "$RAVEN_SYSTEM/core/skills"/*/; do
             skill_name=$(basename "$skill_dir")
             skill_md="$skill_dir/SKILL.md"
