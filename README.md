@@ -11,7 +11,7 @@ AI codes fast. Raven enforces Discipline — Strategic Thinking, Scalable Struct
 - **Strategic Thinking** — done by two orchestrators, picked automatically based on what you're doing:
   - **Andie** — for new work and decisions (new repo, new feature, "should we use X or Y?"). Makes a plan, attacks it from three angles (business, technical, data — plus a critic), and waits for your go before touching code.
   - **Andie-Jr** — for bugs in existing code ("why is auth failing?"). Skips the planning ceremony and runs a fast 2-round triage straight to root cause → fix, so brownfield debugging isn't slowed down by process it doesn't need.
-- **Scalable Structure** — every prompt is routed to the right expert automatically. 61 specialists, one per domain, picked by deterministic rules — and you always see a one-line note saying who's handling it and why. Works the same on one repo or a hundred.
+- **Scalable Structure** — every prompt is routed to the right expert automatically. 62 specialists, one per domain, picked by deterministic rules — and you always see a one-line note saying who's handling it and why. Works the same on one repo or a hundred.
 - **Security at Source** — guards run on your machine, at the moment code is written and committed: secrets are blocked, vulnerable libraries are blocked, and edits are blocked until the thinking actually happened. Not a report after the damage — a gate before it.
 
 All local. Zero telemetry. MIT.
@@ -89,7 +89,7 @@ This is also where **Andie-Jr** earns its keep: once the manifest is in place, a
 
 - **2 orchestrators** — Andie (plan-first, one hard gate, critic voice) and Andie-Jr (brownfield debug, max 2 rounds)
 - **Deterministic routers** — repo-state + intent routing with visible one-line toasters; never routes silently
-- **61 domain skills** — FastAPI, Postgres, K8s, Terraform, Salesforce, Odoo, Oracle, AWS/GCP/Azure, and more, loaded only when your work matches
+- **62 domain skills** — FastAPI, Postgres, K8s, Terraform, Salesforce, Odoo, Oracle, AWS/GCP/Azure, and more, loaded only when your work matches
 - **Local guards** — secret scan + CVE check (CVSS >7 blocks) at every commit; optional edit gate (`raven-skill-gate`, shadow/soft/hard modes); style and architecture checks
 - **Cost-aware model routing** — prompts classified to the cheapest adequate tier; secret-laden context forced to a local model
 - **Educate (default guided)** — `.raven/educate.json` (missing = guided). Claude PreToolUse **denies** writes until `go ahead`. Other IDEs: same loop from the boot file (`educate=`). Off: `educate off` or `Lucky` (persists; SessionStart does not wipe the file). Read-only research always passes.
@@ -191,7 +191,7 @@ Pre-commit hook (.git/hooks/pre-commit)
 Commit lands (or blocked + approval flow starts)
 ```
 
-### 7 Guard Agents — What They Check
+### 10 Guard Agents — What They Check
 
 | Guard | Fires | Detects | Action |
 |-------|-------|---------|--------|
@@ -268,7 +268,7 @@ The engine applied to itself: unified script trees + CI drift gates, docs-vs-rea
 **Maintained from v4.0:**
 - Andie Drama mode (3-panelist debate on tradeoffs)
 - Andie-jr fast triage (2-round root-cause flow)
-- 61 domain skills (ML, Salesforce, Odoo, K8s, Terraform, etc.)
+- 62 domain skills (ML, Salesforce, Odoo, K8s, Terraform, etc.)
 - Commit-time secret + CVE scanning
 - Cross-session memory (`.raven/memory/`)
 - SMTP + Slack notifications
@@ -276,7 +276,7 @@ The engine applied to itself: unified script trees + CI drift gates, docs-vs-rea
 ### **Raven v4.0.0** — Honesty Pass + First Release
 
 - Rewritten README: no false claims, honest ROI section, per-persona messaging.
-- Verified 61 skills (corrected from earlier miscount).
+- Verified 62 skills (corrected from earlier miscount).
 - CLAUDE.md per-turn discipline contract at top; Raven/Lucky gate; real hook names.
 - First onboarding in Andie: brownfield self-detect vs greenfield setup (≤2 questions).
 - `/andie` + `/andie-jr` force-path commands; plugin now bundles 12 commands.

@@ -47,7 +47,7 @@ chmod +x "$PROJECT_DIR/.claude/scripts/"*.sh 2>/dev/null || true
 cp "$SR_REPO_DIR/core/skills/raven-core/SKILL.md"       "$PROJECT_DIR/.claude/skills/raven-core/"
 cp "$SR_REPO_DIR/core/skills/raven-core/rules/"*.md     "$PROJECT_DIR/.claude/skills/raven-core/rules/" 2>/dev/null || true
 
-# ─── ALL 35 SKILLS ───────────────────────────────────────────────────────────
+# ─── ALL 62 SKILLS ───────────────────────────────────────────────────────────
 # Install every skill from core/skills/ — not just the original 8
 SKILLS_INSTALLED=0
 for skill_dir in "$SR_REPO_DIR/core/skills"/*/; do
