@@ -8,16 +8,6 @@
 
 import sys, os, re, subprocess, argparse
 
-# Raven output is emoji-forward and a console/pipe defaults to cp1252 on Windows, so
-# print() raises UnicodeEncodeError and any fail-soft wrapper swallows it — the script
-# appears to do nothing while having done its work. PYTHONUTF8=1 covers hook
-# invocations; this covers being run by hand or by a skill via Bash. BUG-029.
-for _stream in (sys.stdout, sys.stderr):
-    try:
-        _stream.reconfigure(encoding="utf-8", errors="replace")
-    except (AttributeError, ValueError):  # pragma: no cover
-        pass
-
 parser = argparse.ArgumentParser(description="Raven Secret Scanner")
 parser.add_argument("--pr",                action="store_true", help="PR mode — scan diff vs base branch")
 parser.add_argument("--changed-files-only",action="store_true", help="Only scan files changed in PR")

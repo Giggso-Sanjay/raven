@@ -7,27 +7,27 @@
           {
             "type": "command",
             "timeout": 10,
-            "command": "PYTHONUTF8=1 python3 \"${CLAUDE_PLUGIN_ROOT}/scripts/triage-router.py\" 2>/dev/null || true"
+            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/scripts/triage-router.py\" 2>/dev/null || true"
           },
           {
             "type": "command",
             "timeout": 10,
-            "command": "PYTHONUTF8=1 python3 \"${CLAUDE_PLUGIN_ROOT}/scripts/architect-router.py\" 2>/dev/null || true"
+            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/scripts/architect-router.py\" 2>/dev/null || true"
           },
           {
             "type": "command",
             "timeout": 10,
-            "command": "PYTHONUTF8=1 python3 \"${CLAUDE_PLUGIN_ROOT}/scripts/model-router.py\" --hook 2>/dev/null || true"
+            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/scripts/model-router.py\" --hook 2>/dev/null || true"
           },
           {
             "type": "command",
             "timeout": 10,
-            "command": "PYTHONUTF8=1 python3 \"${CLAUDE_PLUGIN_ROOT}/scripts/cve-prompt-guard.py\" 2>/dev/null || true"
+            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/scripts/cve-prompt-guard.py\" 2>/dev/null || true"
           },
           {
             "type": "command",
             "timeout": 5,
-            "command": "PYTHONUTF8=1 python3 \"${CLAUDE_PLUGIN_ROOT}/scripts/push-approve.py\" 2>/dev/null || true"
+            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/scripts/push-approve.py\" 2>/dev/null || true"
           }
         ]
       }
@@ -39,7 +39,7 @@
           {
             "type": "command",
             "timeout": 5,
-            "command": "PYTHONUTF8=1 python3 \"${CLAUDE_PLUGIN_ROOT}/scripts/push-gate.py\" 2>/dev/null || true"
+            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/scripts/push-gate.py\" 2>/dev/null || true"
           }
         ]
       }
@@ -52,19 +52,19 @@
             "type": "command",
             "timeout": 10,
             "async": false,
-            "command": "PYTHONUTF8=1 python3 \"${CLAUDE_PLUGIN_ROOT}/scripts/session-start.py\" 2>/dev/null || true"
+            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/scripts/session-start.py\" 2>/dev/null || true"
           },
           {
             "type": "command",
             "timeout": 5,
             "async": false,
-            "command": "PYTHONUTF8=1 python3 \"${CLAUDE_PLUGIN_ROOT}/scripts/vault-load.py\" --hook 2>/dev/null || true"
+            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/scripts/vault-load.py\" --hook 2>/dev/null || true"
           },
           {
             "type": "command",
             "timeout": 5,
             "async": false,
-            "command": "PYTHONUTF8=1 python3 \"${CLAUDE_PLUGIN_ROOT}/scripts/push-gate.py\" --reset 2>/dev/null || true"
+            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/scripts/push-gate.py\" --reset 2>/dev/null || true"
           }
         ]
       }
@@ -76,12 +76,12 @@
           {
             "type": "command",
             "async": true,
-            "command": "PYTHONUTF8=1 python3 \"${CLAUDE_PLUGIN_ROOT}/scripts/db-guard.py\" 2>/dev/null || true"
+            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/scripts/db-guard.py\" 2>/dev/null || true"
           },
           {
             "type": "command",
             "async": true,
-            "command": "PYTHONUTF8=1 python3 \"${CLAUDE_PLUGIN_ROOT}/scripts/secret-scan.py\" --changed-files-only </dev/null 2>/dev/null || true"
+            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/scripts/secret-scan.py\" --changed-files-only </dev/null 2>/dev/null || true"
           }
         ]
       }
@@ -93,37 +93,37 @@
           {
             "type": "command",
             "async": true,
-            "command": "PYTHONUTF8=1 python3 \"${CLAUDE_PLUGIN_ROOT}/scripts/token-meter-write.py\" 2>/dev/null || true"
+            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/scripts/token-meter-write.py\" 2>/dev/null || true"
           },
           {
             "type": "command",
             "async": true,
-            "command": "PYTHONUTF8=1 python3 \"${CLAUDE_PLUGIN_ROOT}/scripts/token-guard.py\" 2>/dev/null || true"
+            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/scripts/token-guard.py\" 2>/dev/null || true"
           },
           {
             "type": "command",
             "async": true,
-            "command": "PYTHONUTF8=1 python3 \"${CLAUDE_PLUGIN_ROOT}/scripts/dashboard.py\" --html --current-project --if-stale 15 2>/dev/null || true"
+            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/scripts/dashboard.py\" --html --current-project --if-stale 15 2>/dev/null || true"
           },
           {
             "type": "command",
             "async": true,
-            "command": "PYTHONUTF8=1 python3 \"${CLAUDE_PLUGIN_ROOT}/scripts/raven-xray.py\" --build --if-stale 15 2>/dev/null || true"
+            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/scripts/raven-xray.py\" --build --if-stale 15 2>/dev/null || true"
           },
           {
             "type": "command",
             "async": true,
-            "command": "PYTHONUTF8=1 python3 \"${CLAUDE_PLUGIN_ROOT}/scripts/obsidian-log.py\" 2>/dev/null || true"
+            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/scripts/obsidian-log.py\" 2>/dev/null || true"
           },
           {
             "type": "command",
             "async": true,
-            "command": "PYTHONUTF8=1 python3 \"${CLAUDE_PLUGIN_ROOT}/scripts/knowledge-extract.py\" --quiet 2>/dev/null || true"
+            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/scripts/knowledge-extract.py\" --quiet 2>/dev/null || true"
           },
           {
             "type": "command",
             "async": true,
-            "command": "PYTHONUTF8=1 python3 \"${CLAUDE_PLUGIN_ROOT}/scripts/session-gate.py\" 2>/dev/null || true"
+            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/scripts/session-gate.py\" 2>/dev/null || true"
           }
         ]
       }
