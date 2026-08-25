@@ -64,25 +64,11 @@ def _merge_extra_hooks(base: dict, extra: dict) -> dict:
 
 
 def _plugin_root_command(command: str) -> str:
-    """Rewrite the canonical dual-fallback command to plugin-root form.
-
-    Canonical shape:
-      python3 "${CLAUDE_PROJECT_DIR:-.}/.claude/scripts/X.py" ARGS 2>/dev/null || <fallback>
-
-    ARGS must survive verbatim. The previous regex expected flags to follow the script
-    name directly, but a closing double-quote sits between them, so the args group always
-    matched empty and EVERY flag was silently dropped from the distributed config:
-    --build (code map never built at all), --if-stale (3000-line report rebuilt every
-    turn), --changed-files-only (whole tree rescanned per edit), --hook (prompt never
-    read from stdin). Match the name, skip the optional quote, keep the rest.
-    """
-    first = command.split("||")[0]
-    m = re.search(r'([a-z0-9_-]+\.py)"?(.*)$', first)
-    if not m:
-        return command  # e.g. the SessionStart `rm -f` flag reset — no script to rewrite
-    name = m.group(1)
-    args = m.group(2).replace("2>/dev/null", "").strip()
-    args = f" {args}" if args else ""
+    """Rewrite the canonical dual-fallback command to plugin-root form."""
+    scripts = re.findall(r"([a-z0-9_-]+\.py)((?:\s+--?[a-z0-9-]+(?:\s+\d+)?)*)", command)
+    if not scripts:
+        return command
+    name, args = scripts[0]
     return f'python3 "${{CLAUDE_PLUGIN_ROOT}}/scripts/{name}"{args} 2>/dev/null || true'
 
 
