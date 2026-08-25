@@ -26,20 +26,8 @@ from pathlib import Path
 # ─── Canonical release history ────────────────────────────────────────────────
 # Add each new release to the END of this list.
 # Distance = index(latest) - index(installed)
-RAVEN_RELEASES = [
-    "2.0.0",
-    "2.1.0",
-    "2.2.0",
-    "2.3.0",
-    "2.4.0",
-    "2.5.0",
-    "2.6.0",
-    "2.7.0",
-    "2.8.0",
-    "2.9.0",
-    "2.9.1",
-    "3.0.0",
-]
+_REL = Path(__file__).resolve().parent / "releases.json"
+RAVEN_RELEASES = json.loads(_REL.read_text()) if _REL.is_file() else ["5.5.4"]
 
 RAVEN_LATEST = RAVEN_RELEASES[-1]
 AUTO_SYNC_THRESHOLD = 3   # releases behind → auto-sync

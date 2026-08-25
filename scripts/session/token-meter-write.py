@@ -1,0 +1,820 @@
+#!/usr/bin/env python3
+"""
+token-meter-write.py — Raven Stop hook v1.0
+Reads session transcript JSONL, extracts token usage, calculates costs.
+Writes metrics to three files: session JSON, monthly rollup, audit log.
+Non-blocking — logs errors but never crashes the session.
+"""
+import json
+import sys
+import os
+import pathlib
+import subprocess
+from datetime import datetime
+from typing import Optional, Dict, Any
+
+PRICING_FILE = pathlib.Path(__file__).parent / "model-pricing.json"
+_ROOT = pathlib.Path(os.environ.get("CLAUDE_PROJECT_DIR") or pathlib.Path.cwd()).resolve()
+RAVEN_DIR = _ROOT / ".raven"
+VAULT_DIR = pathlib.Path.home() / "RavenVault"
+AUDIT_DIR = RAVEN_DIR / "audit"
+CHECKPOINT_FILE = RAVEN_DIR / ".token-meter-checkpoint.json"
+COST_LOG = RAVEN_DIR / "cost-log.jsonl"
+
+
+def load_checkpoint() -> Dict[str, Any]:
+    """Per-session line cursor. One global session_id was overwritten by the
+    next Stop and the previous transcript was summed from line 0 again.
+    """
+    try:
+        if CHECKPOINT_FILE.exists():
+            data = json.loads(CHECKPOINT_FILE.read_text())
+            if isinstance(data.get("sessions"), dict):
+                return data
+            return {
+                "sessions": {
+                    str(data.get("session_id") or ""): {
+                        "last_line_index": int(data.get("last_line_index") or 0),
+                    }
+                }
+            }
+    except Exception:
+        pass
+    return {"sessions": {}}
+
+
+def write_checkpoint(session_id: str, last_line_index: int) -> None:
+    try:
+        RAVEN_DIR.mkdir(parents=True, exist_ok=True)
+        data = load_checkpoint()
+        sessions = data.setdefault("sessions", {})
+        sessions[str(session_id or "")] = {
+            "last_line_index": int(last_line_index or 0),
+            "last_processed_at": datetime.utcnow().isoformat() + "Z",
+        }
+        data["session_id"] = session_id
+        data["last_line_index"] = last_line_index
+        CHECKPOINT_FILE.write_text(json.dumps(data, indent=2) + "\n")
+    except Exception as e:
+        sys.stderr.write(f"Warning: Failed to write checkpoint: {e}\n")
+
+
+def load_pricing() -> Dict[str, Dict[str, float]]:
+    """Shipped + local rates via cost_calc (no silent gpt-4o fallback)."""
+    try:
+        sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
+        from cost_calc import load_table
+        return load_table()
+    except Exception as e:
+        sys.stderr.write(f"Warning: Failed to load pricing config: {e}\n")
+    return {}
+
+
+def get_cost(model: str, tokens_in: int, tokens_out: int, pricing: Dict = None) -> float:
+    """USD from cost_calc. 0.0 if rates missing (row recorded, not guessed)."""
+    try:
+        sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
+        from cost_calc import get_cost as _cc
+        usd = _cc(model, tokens_in, tokens_out)
+        if usd is not None:
+            return usd
+    except Exception:
+        pass
+    if pricing:
+        key = (model or "").split("/")[-1]
+        model_price = pricing.get(model) or pricing.get(key) or {}
+        inn = model_price.get("input_per_1m")
+        out = model_price.get("output_per_1m")
+        if inn is not None and out is not None:
+            return round((tokens_in / 1_000_000) * float(inn) + (tokens_out / 1_000_000) * float(out), 6)
+    return 0.0
+
+
+def _session_id_of(msg: Dict[str, Any]) -> str:
+    return str(msg.get("session_id") or msg.get("sessionId") or "")
+
+
+def _is_assistant(msg: Dict[str, Any]) -> bool:
+    if msg.get("type") == "assistant":
+        return True
+    if msg.get("role") == "assistant":
+        return True
+    inner = msg.get("message")
+    return isinstance(inner, dict) and inner.get("role") == "assistant"
+
+
+def parse_transcript(transcript_path: str) -> Dict[str, Any]:
+    """Parse JSONL transcript and extract metrics for lines NEW since the
+    last checkpoint (delta), not the whole file every time.
+
+    Returns metrics plus "_new_line_count" (total lines in the file right
+    now) so the caller can persist the checkpoint after a successful write.
+    """
+    metrics = {
+        "session_id": "",
+        "timestamp": datetime.utcnow().isoformat() + "Z",
+        "model": "unknown",
+        "raven_code": {
+            "tokens": 0,
+            "input": 0,
+            "output": 0,
+            "cache_read": 0,
+            "cache_creation": 0,
+            "cost_usd": 0.0,
+            "calls": 0,
+        },
+        "user_work": {
+            "tokens": 0,
+            "input": 0,
+            "output": 0,
+            "cache_read": 0,
+            "cache_creation": 0,
+            "cost_usd": 0.0,
+            "calls": 0,
+        },
+        "by_model": {},  # model -> per-model delta usage, feeds the cost log
+        "_new_line_count": 0,
+    }
+    pricing = load_pricing()
+    total_in, total_out, total_cache_read, total_cache_creation = 0, 0, 0, 0
+
+    try:
+        with open(transcript_path, "r") as f:
+            all_lines = f.readlines()
+
+        metrics["_new_line_count"] = len(all_lines)
+
+        # Peek the session_id from any line so we know whether the checkpoint
+        # (keyed by session_id) applies to THIS transcript or a prior one.
+        checkpoint = load_checkpoint()
+        start_index = 0
+        for line in all_lines:
+            if not line.strip():
+                continue
+            try:
+                peek = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            sid = _session_id_of(peek)
+            if sid:
+                metrics["session_id"] = sid
+                prev = (checkpoint.get("sessions") or {}).get(sid) or {}
+                if prev:
+                    start_index = min(int(prev.get("last_line_index") or 0), len(all_lines))
+                elif checkpoint.get("session_id") == sid:
+                    start_index = min(int(checkpoint.get("last_line_index") or 0), len(all_lines))
+                break
+
+        for line in all_lines[start_index:]:
+                if not line.strip():
+                    continue
+                try:
+                    msg = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+
+                try:
+                    # Claude Code JSONL uses type=assistant + sessionId, not role/session_id.
+                    if _is_assistant(msg):
+                        inner = msg.get("message") if isinstance(msg.get("message"), dict) else {}
+                        usage = inner.get("usage") or msg.get("usage") or {}
+                        if not usage:
+                            continue
+
+                        model = inner.get("model") or msg.get("model") or "unknown"
+                        metrics["model"] = model
+                        sid = _session_id_of(msg)
+                        if sid:
+                            metrics["session_id"] = sid
+
+                        input_tokens = usage.get("input_tokens", 0)
+                        output_tokens = usage.get("output_tokens", 0)
+                        cache_read = usage.get("cache_read_input_tokens", 0)
+                        cache_creation = usage.get("cache_creation_input_tokens", 0)
+
+                        # Every transcript-derived turn is real conversation cost —
+                        # attribute to user_work unconditionally. is_raven_code()'s
+                        # path-substring heuristic (".raven/", "raven-") misfires on
+                        # any project literally named "raven": nearly every tool call
+                        # in this repo legitimately touches a raven-prefixed path, so
+                        # it classified ~100% of real work as overhead. Raven's actual
+                        # internal overhead (router/classifier calls) is tracked
+                        # separately and correctly via model-router.py's explicit
+                        # --source raven_overhead writes — those aren't part of this
+                        # transcript at all, so no heuristic split is needed here.
+                        bucket = metrics["user_work"]
+
+                        # Update totals
+                        bucket["calls"] += 1
+                        bucket["input"] += input_tokens
+                        bucket["output"] += output_tokens
+                        bucket["cache_read"] += cache_read
+                        bucket["cache_creation"] += cache_creation
+                        total_in += input_tokens
+                        total_out += output_tokens
+                        total_cache_read += cache_read
+                        total_cache_creation += cache_creation
+
+                        # Calculate cost (cache_read is 0.1x input, cache_creation is 1.25x input)
+                        cost = get_cost(model, input_tokens, output_tokens, pricing)
+                        cache_read_cost = (cache_read / 1_000_000) * (
+                            pricing.get(model, {}).get("input_per_1m", 1) * 0.1
+                        )
+                        cache_creation_cost = (cache_creation / 1_000_000) * (
+                            pricing.get(model, {}).get("input_per_1m", 1) * 1.25
+                        )
+                        msg_cost = cost + cache_read_cost + cache_creation_cost
+                        bucket["cost_usd"] += msg_cost
+
+                        # Per-model delta — one cost-log row per model per turn.
+                        # Multiple models appear only when subagents with model
+                        # overrides ran this turn; the transcript is the sole
+                        # honest source of that signal.
+                        pm = metrics["by_model"].setdefault(model, {
+                            "tokens_in": 0, "tokens_out": 0,
+                            "cache_read": 0, "cache_creation": 0,
+                            "cost_usd": 0.0, "calls": 0,
+                        })
+                        pm["tokens_in"] += input_tokens
+                        pm["tokens_out"] += output_tokens
+                        pm["cache_read"] += cache_read
+                        pm["cache_creation"] += cache_creation
+                        pm["cost_usd"] += msg_cost
+                        pm["calls"] += 1
+
+                except Exception as e:
+                    sys.stderr.write(f"Warning: Failed to parse message: {e}\n")
+                    continue
+
+        # Calculate totals
+        metrics["tokens"] = total_in + total_out
+        metrics["total"] = {
+            "tokens": total_in + total_out,
+            "input": total_in,
+            "output": total_out,
+            "cache_read": total_cache_read,
+            "cache_creation": total_cache_creation,
+            "cost_usd": metrics["raven_code"]["cost_usd"]
+            + metrics["user_work"]["cost_usd"],
+            "calls": metrics["raven_code"]["calls"] + metrics["user_work"]["calls"],
+        }
+
+    except Exception as e:
+        sys.stderr.write(f"Warning: Failed to read transcript {transcript_path}: {e}\n")
+
+    return metrics
+
+
+def write_session_json(metrics: Dict[str, Any]) -> bool:
+    """Merge transcript-derived metrics into .raven/.model-session.json.
+
+    model-router.py (UserPromptSubmit hook) also writes this file, using a
+    raven_overhead/user_work schema. Overwriting the file wholesale here wiped
+    out that data (and vice versa) every other hook call, which is why
+    user_work tokens/cost_usd always read back as 0 — the two writers never
+    agreed on a shared shape. Read-merge-write instead of replace.
+    """
+    try:
+        RAVEN_DIR.mkdir(parents=True, exist_ok=True)
+        session_file = RAVEN_DIR / ".model-session.json"
+
+        try:
+            existing = json.loads(session_file.read_text()) if session_file.exists() else {}
+        except Exception:
+            existing = {}
+
+        overhead = existing.get("raven_overhead", {"tokens": 0, "cost_usd": 0.0, "calls": 0, "by_source": {}})
+        user_work = existing.get("user_work", {
+            "tokens": 0, "cost_usd": 0.0, "calls": 0,
+            "tier_counts": {"SIMPLE": 0, "MEDIUM": 0, "COMPLEX": 0, "LOCAL_ONLY": 0},
+            "last_classification": None,
+        })
+
+        # raven_overhead is populated separately by model-router.py's explicit
+        # --source raven_overhead calls (its own classifier subprocess, not
+        # part of this transcript). Nothing from the transcript folds in here.
+        overhead.setdefault("by_source", {})
+
+        # Accumulate real transcript-derived usage into user_work — additive,
+        # never replaced, so model-router.py's tier_counts/last_classification
+        # (written on the next UserPromptSubmit) survive alongside it.
+        uw = metrics["user_work"]
+        user_work["tokens"] = user_work.get("tokens", 0) + uw["tokens"]
+        user_work["cost_usd"] = user_work.get("cost_usd", 0.0) + uw["cost_usd"]
+        user_work["calls"] = user_work.get("calls", 0) + uw["calls"]
+        user_work.setdefault("tier_counts", {"SIMPLE": 0, "MEDIUM": 0, "COMPLEX": 0, "LOCAL_ONLY": 0})
+        user_work.setdefault("last_classification", None)
+
+        merged = {
+            "session_started_at": existing.get("session_started_at") or metrics["timestamp"],
+            "raven_overhead": overhead,
+            "user_work": user_work,
+            "providers": existing.get("providers", {}),
+            "last_transcript_model": metrics.get("model", "unknown"),
+            "last_transcript_write": metrics["timestamp"],
+        }
+
+        session_file.write_text(json.dumps(merged, indent=2))
+        return True
+    except Exception as e:
+        sys.stderr.write(f"Warning: Failed to write session JSON: {e}\n")
+        return False
+
+
+def _resolve_project_name() -> str:
+    """Best-effort project name for per-repo metrics."""
+    try:
+        man = RAVEN_DIR / "manifest.json"
+        if man.exists():
+            name = json.loads(man.read_text()).get("project")
+            if name:
+                return str(name)
+    except Exception:
+        pass
+    try:
+        remote = subprocess.check_output(
+            ["git", "remote", "get-url", "origin"],
+            stderr=subprocess.DEVNULL,
+            text=True,
+        ).strip()
+        if remote:
+            return remote.rstrip("/").split("/")[-1].replace(".git", "")
+    except Exception:
+        pass
+    return pathlib.Path.cwd().name
+
+
+def _bump_sessions(container: Dict[str, Any], session_id: str) -> None:
+    """Increment container['sessions'] at most once per distinct session_id.
+
+    Stop fires every turn, so without this a single session's sessions count
+    would grow by 1 per turn instead of by 1 total (this is why old rollups
+    showed things like 23,527 "sessions" in a single day). Falls back to a
+    plain increment only when session_id is unknown/empty.
+    """
+    if not session_id:
+        container["sessions"] = int(container.get("sessions") or 0) + 1
+        return
+    seen = container.setdefault("_session_ids", [])
+    if session_id not in seen:
+        seen.append(session_id)
+        container["sessions"] = int(container.get("sessions") or 0) + 1
+
+
+def write_monthly_rollup(metrics: Dict[str, Any]) -> bool:
+    """Append/merge into ~/RavenVault/.metrics/YYYY-MM.json (per-project).
+
+    metrics["total"] is now a per-turn DELTA (see parse_transcript's
+    checkpoint logic), so summing it across calls is correct — it used to be
+    the transcript's cumulative total re-added every turn, which compounded.
+    """
+    try:
+        VAULT_DIR.mkdir(parents=True, exist_ok=True)
+        metrics_dir = VAULT_DIR / ".metrics"
+        metrics_dir.mkdir(parents=True, exist_ok=True)
+
+        # Extract YYYY-MM from timestamp
+        ts = datetime.fromisoformat(metrics["timestamp"].replace("Z", "+00:00"))
+        month_file = metrics_dir / f"{ts.strftime('%Y-%m')}.json"
+        project = metrics.get("project") or _resolve_project_name()
+        metrics["project"] = project
+
+        # Load existing or init — preserve list-shaped sessions if present
+        if month_file.exists():
+            try:
+                data = json.loads(month_file.read_text())
+            except json.JSONDecodeError:
+                data = {}
+        else:
+            data = {}
+
+        data.setdefault("month", ts.strftime("%Y-%m"))
+        data.setdefault("year_month", ts.strftime("%Y-%m"))
+        data.setdefault("by_day", {})
+        data.setdefault("by_project", {})
+        data.setdefault("total", {})
+
+        session_id = metrics.get("session_id", "")
+        day_key = ts.strftime("%Y-%m-%d")
+        tok = int(metrics.get("total", {}).get("tokens", 0) or 0)
+        cost = float(metrics.get("total", {}).get("cost_usd", 0) or 0)
+
+        # sessions counter may be int or list — keep both shapes safe
+        if isinstance(data.get("sessions"), list):
+            pass
+        else:
+            _bump_sessions(data, session_id)
+
+        # Unscoped by_day (legacy) + nested by_project
+        if day_key not in data["by_day"] or not isinstance(data["by_day"].get(day_key), dict):
+            data["by_day"][day_key] = {
+                "sessions": 0,
+                "tokens": 0,
+                "cost_usd": 0.0,
+                "by_project": {},
+            }
+        day = data["by_day"][day_key]
+        day.setdefault("by_project", {})
+        _bump_sessions(day, session_id)
+        day["tokens"] = int(day.get("tokens") or 0) + tok
+        day["cost_usd"] = float(day.get("cost_usd") or 0) + cost
+        pb = day["by_project"].setdefault(
+            project, {"sessions": 0, "tokens": 0, "cost_usd": 0.0}
+        )
+        _bump_sessions(pb, session_id)
+        pb["tokens"] += tok
+        pb["cost_usd"] += cost
+
+        # Top-level by_project with by_day
+        prow = data["by_project"].setdefault(
+            project,
+            {"sessions": 0, "tokens": 0, "cost_usd": 0.0, "by_day": {}},
+        )
+        _bump_sessions(prow, session_id)
+        prow["tokens"] = int(prow.get("tokens") or 0) + tok
+        prow["cost_usd"] = float(prow.get("cost_usd") or 0) + cost
+        prow.setdefault("by_day", {})
+        pd = prow["by_day"].setdefault(
+            day_key, {"sessions": 0, "tokens": 0, "cost_usd": 0.0}
+        )
+        _bump_sessions(pd, session_id)
+        pd["tokens"] += tok
+        pd["cost_usd"] += cost
+
+        # Also append a project-tagged row into sessions list if list-shaped.
+        # A delta row per turn is still meaningful here since tok/cost are
+        # per-turn deltas, not cumulative totals — no double count.
+        if isinstance(data.get("sessions"), list):
+            data["sessions"].append(
+                {
+                    "date": day_key,
+                    "started_at": metrics.get("timestamp"),
+                    "session_id": session_id,
+                    "project": project,
+                    "sessions": 1,
+                    "tokens": tok,
+                    "cost_usd": cost,
+                }
+            )
+
+        data["total"]["tokens"] = int(data["total"].get("tokens") or 0) + tok
+        data["total"]["cost_usd"] = float(data["total"].get("cost_usd") or 0) + cost
+
+        month_file.write_text(json.dumps(data, indent=2))
+        return True
+    except Exception as e:
+        sys.stderr.write(f"Warning: Failed to write monthly rollup: {e}\n")
+        return False
+
+
+def write_audit_log(metrics: Dict[str, Any]) -> bool:
+    """Append to .raven/audit/YYYY-MM-DD.log."""
+    try:
+        AUDIT_DIR.mkdir(parents=True, exist_ok=True)
+
+        ts = datetime.fromisoformat(metrics["timestamp"].replace("Z", "+00:00"))
+        log_file = AUDIT_DIR / f"{ts.strftime('%Y-%m-%d')}.log"
+
+        try:
+            from cost_calc import detect_ide as _ide2, repo_name as _repo2
+            _ide_a = _ide2()
+            _repo_a = _repo2()
+        except Exception:
+            _ide_a = "unknown"
+            _repo_a = metrics.get("project") or "unknown"
+        entry = {
+            "timestamp": metrics["timestamp"],
+            "repo": _repo_a,
+            "ide": _ide_a,
+            "session_id": metrics.get("session_id", ""),
+            "model": metrics.get("model", "unknown"),
+            "tokens": metrics["total"].get("tokens", 0),
+            "cost_usd": round(metrics["total"].get("cost_usd", 0), 4),
+            "raven_calls": metrics["raven_code"].get("calls", 0),
+            "user_calls": metrics["user_work"].get("calls", 0),
+        }
+
+        with open(log_file, "a") as f:
+            f.write(json.dumps(entry) + "\n")
+        return True
+    except Exception as e:
+        sys.stderr.write(f"Warning: Failed to write audit log: {e}\n")
+        return False
+
+
+def _read_estimate() -> Optional[Dict[str, Any]]:
+    """Pre-turn estimate from model-router's last classification, if any.
+
+    est tokens ≈ prompt_chars/4 input + a nominal 500-token reply, priced at
+    the tier model's rates. Clearly an estimate — never merged with computed.
+    Returns None when no classification is available; the log row then shows
+    est_cost_usd: null rather than a fabricated number.
+    """
+    try:
+        session = json.loads((RAVEN_DIR / ".model-session.json").read_text())
+        lc = (session.get("user_work") or {}).get("last_classification") or {}
+        model_str = lc.get("model_for_tier", "")
+        prompt_chars = lc.get("prompt_chars")
+        if not model_str or prompt_chars is None:
+            return None
+        return {
+            "tier": lc.get("tier"),
+            "model": model_str,
+            "est_cost_usd": lc.get("est_cost_usd"),
+        }
+    except Exception:
+        return None
+
+
+def write_cost_log(metrics: Dict[str, Any]) -> bool:
+    """Append one row per model actually observed this turn to cost-log.jsonl.
+
+    Honest-accounting rules:
+      - Rows exist ONLY for models seen in the transcript delta. Raven's hook
+        scripts (triage/architect/model-router/cve-guard) make zero API calls
+        and cost $0 — they never get rows. (The old by_source overhead numbers
+        were fiction: nothing ever computed them.)
+      - "primary" = the model with the most calls in this turn's delta;
+        any other model means a subagent ran — tagged "subagent".
+      - est_cost_usd is the router's pre-turn guess (may be null);
+        computed_cost_usd is real token usage x pricing. Never merged.
+      - cum_session_usd / cum_month_usd are running sums of computed cost,
+        derived from this same log file — one source of truth.
+    """
+    by_model = metrics.get("by_model") or {}
+    if not by_model:
+        sys.stderr.write(
+            "token-meter-write: no assistant usage in this transcript delta; "
+            "cost-log.jsonl not appended\n"
+        )
+        return True
+
+    try:
+        RAVEN_DIR.mkdir(parents=True, exist_ok=True)
+        session_id = metrics.get("session_id", "")
+        month_prefix = metrics["timestamp"][:7]  # YYYY-MM
+
+        cum_session = 0.0
+        cum_month = 0.0
+        if COST_LOG.exists():
+            for line in COST_LOG.read_text().splitlines():
+                try:
+                    row = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                c = float(row.get("computed_cost_usd") or 0)
+                if row.get("ts", "").startswith(month_prefix):
+                    cum_month += c
+                if session_id and row.get("session_id") == session_id:
+                    cum_session += c
+
+        estimate = _read_estimate()
+        primary_model = max(by_model, key=lambda m: by_model[m]["calls"])
+
+        rows = []
+        for model, pm in by_model.items():
+            cum_session += pm["cost_usd"]
+            cum_month += pm["cost_usd"]
+            try:
+                from cost_calc import detect_ide as _ide, repo_name as _repo
+                _ide_name = _ide()
+                _repo_name = _repo()
+            except Exception:
+                _ide_name = "unknown"
+                _repo_name = metrics.get("project") or "unknown"
+            rows.append({
+                "ts": metrics["timestamp"],
+                "session_id": session_id,
+                "repo": _repo_name,
+                "ide": _ide_name,
+                "model": model,
+                "source": "primary" if model == primary_model else "subagent",
+                "tokens_in": pm["tokens_in"],
+                "tokens_out": pm["tokens_out"],
+                "cache_read": pm["cache_read"],
+                "cache_creation": pm["cache_creation"],
+                "est_cost_usd": (estimate or {}).get("est_cost_usd"),
+                "est_tier": (estimate or {}).get("tier"),
+                "computed_cost_usd": round(pm["cost_usd"], 6),
+                "cum_session_usd": round(cum_session, 6),
+                "total_cost_usd": round(cum_session, 6),
+                "cum_month_usd": round(cum_month, 6),
+            })
+
+        with open(COST_LOG, "a") as f:
+            for row in rows:
+                f.write(json.dumps(row) + "\n")
+        turn_usd = sum(float(r.get("computed_cost_usd") or 0) for r in rows)
+        tin = sum(int(r.get("tokens_in") or 0) for r in rows)
+        tout = sum(int(r.get("tokens_out") or 0) for r in rows)
+        try:
+            sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
+            from cost_calc import write_turn_end, end_money_line
+            rec = write_turn_end(
+                turn_usd=round(turn_usd, 6),
+                running_total=cum_session,
+                model=primary_model,
+                tokens_in=tin,
+                tokens_out=tout,
+                session_id=session_id,
+            )
+            print(end_money_line(rec), file=sys.stderr)
+        except Exception as e:
+            sys.stderr.write(f"Warning: turn-end cost line failed: {e}\n")
+        return True
+    except Exception as e:
+        sys.stderr.write(f"token-meter-write: write_cost_log failed: {e}\n")
+        try:
+            AUDIT_DIR.mkdir(parents=True, exist_ok=True)
+            log_file = AUDIT_DIR / f"{datetime.utcnow().strftime('%Y-%m-%d')}.log"
+            with open(log_file, "a") as f:
+                f.write(json.dumps({
+                    "timestamp": datetime.utcnow().isoformat() + "Z",
+                    "event": "cost-log-write-fail",
+                    "detail": str(e),
+                }) + "\n")
+        except OSError:
+            pass
+        return False
+
+
+COST_VERIFY = RAVEN_DIR / ".cost-verify.json"
+VARIANCE_THRESHOLD_PCT = 5.0
+
+
+def full_transcript_totals(transcript_path: str) -> float:
+    """PATH B — independent session-cost recompute (dual-path verification).
+
+    Deliberately NOT built on parse_transcript(): no checkpoint, no buckets,
+    no delta logic — one dumb pass over the whole file summing every
+    assistant message's usage at pricing rates. The b37f2ba compounding bug
+    lived in the AGGREGATION layer (re-adding cumulative totals per turn);
+    this path has no aggregation layer to get wrong. If Path A's accumulated
+    session total drifts >5% from this figure, the number is flagged
+    UNVERIFIED instead of being presented as fact.
+    """
+    pricing = load_pricing()
+    total = 0.0
+    try:
+        with open(transcript_path, "r") as f:
+            for line in f:
+                if not line.strip():
+                    continue
+                try:
+                    msg = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                if msg.get("role") != "assistant":
+                    continue
+                usage = msg.get("message", {}).get("usage", {})
+                if not usage:
+                    continue
+                model = msg.get("message", {}).get("model", "unknown")
+                rate_in = pricing.get(model, {}).get("input_per_1m", 1)
+                total += get_cost(model, usage.get("input_tokens", 0),
+                                  usage.get("output_tokens", 0), pricing)
+                total += (usage.get("cache_read_input_tokens", 0) / 1_000_000) * rate_in * 0.1
+                total += (usage.get("cache_creation_input_tokens", 0) / 1_000_000) * rate_in * 1.25
+    except Exception as e:
+        sys.stderr.write(f"Warning: path-B recompute failed: {e}\n")
+        return -1.0
+    return round(total, 6)
+
+
+def write_cost_verify(session_id: str, transcript_path: str, timestamp: str) -> None:
+    """Compare Path A (accumulated deltas in cost-log) vs Path B (full
+    recompute); persist verdict for the dashboard and flag disagreements."""
+    try:
+        path_b = full_transcript_totals(transcript_path)
+        if path_b < 0:
+            return
+
+        path_a = 0.0
+        if COST_LOG.exists():
+            for line in COST_LOG.read_text().splitlines():
+                try:
+                    row = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                if session_id and row.get("session_id") == session_id:
+                    path_a += float(row.get("computed_cost_usd") or 0)
+
+        if path_b > 0:
+            variance_pct = abs(path_a - path_b) / path_b * 100
+        else:
+            variance_pct = 0.0 if path_a == 0 else 100.0
+
+        verified = variance_pct <= VARIANCE_THRESHOLD_PCT
+        verdict = {
+            "session_id": session_id,
+            "ts": timestamp,
+            "path_a_usd": round(path_a, 6),
+            "path_a_method": "sum of per-turn checkpoint deltas (cost-log.jsonl)",
+            "path_b_usd": path_b,
+            "path_b_method": "independent full-transcript recompute",
+            "variance_pct": round(variance_pct, 2),
+            "verified": verified,
+            "threshold_pct": VARIANCE_THRESHOLD_PCT,
+        }
+        COST_VERIFY.write_text(json.dumps(verdict, indent=2) + "\n")
+
+        if not verified:
+            # Loud in the audit log too — never silently average or hide.
+            AUDIT_DIR.mkdir(parents=True, exist_ok=True)
+            ts = datetime.fromisoformat(timestamp.replace("Z", "+00:00"))
+            log_file = AUDIT_DIR / f"{ts.strftime('%Y-%m-%d')}.log"
+            with open(log_file, "a") as f:
+                f.write(json.dumps({
+                    "timestamp": timestamp,
+                    "event": "cost-verify-flag",
+                    "session_id": session_id,
+                    "detail": f"UNVERIFIED — cost paths disagree by {variance_pct:.1f}% "
+                              f"(A=${path_a:.6f} deltas vs B=${path_b:.6f} recompute)",
+                }) + "\n")
+    except Exception as e:
+        sys.stderr.write(f"Warning: cost verification failed: {e}\n")
+
+
+def _read_hook_input() -> Dict[str, Any]:
+    try:
+        if sys.stdin.isatty():
+            return {}
+        raw = sys.stdin.read()
+        if not raw.strip():
+            return {}
+        data = json.loads(raw)
+        return data if isinstance(data, dict) else {}
+    except Exception as e:
+        sys.stderr.write(f"token-meter-write: stdin JSON failed: {e}\n")
+        return {}
+
+
+def _resolve_transcript(hook_input: Dict[str, Any]) -> str:
+    path = (
+        hook_input.get("transcript_path")
+        or os.environ.get("CLAUDE_TRANSCRIPT_PATH")
+        or ""
+    )
+    if path and pathlib.Path(path).is_file():
+        return str(path)
+    sid = (
+        hook_input.get("session_id")
+        or hook_input.get("sessionId")
+        or os.environ.get("CLAUDE_SESSION_ID")
+        or ""
+    )
+    if sid:
+        hits = list(pathlib.Path.home().glob(f".claude/projects/**/{sid}.jsonl"))
+        if hits:
+            return str(hits[0])
+    slug = str(_ROOT).replace("/", "-")
+    if not slug.startswith("-"):
+        slug = "-" + slug
+    folder = pathlib.Path.home() / ".claude" / "projects" / slug
+    if folder.is_dir():
+        files = sorted(folder.glob("*.jsonl"), key=lambda p: p.stat().st_mtime, reverse=True)
+        if files:
+            sys.stderr.write(
+                f"token-meter-write: no transcript_path on stdin; using newest {files[0]}\n"
+            )
+            return str(files[0])
+    return ""
+
+
+def main() -> None:
+    """Read Stop hook stdin, parse transcript, write metrics."""
+    try:
+        hook_input = _read_hook_input()
+        transcript_path = _resolve_transcript(hook_input)
+        if not transcript_path:
+            sys.stderr.write(
+                "token-meter-write: no transcript_path in hook input or env; skipping\n"
+            )
+            return
+
+        metrics = parse_transcript(transcript_path)
+        metrics["project"] = _resolve_project_name()
+        new_line_count = metrics.pop("_new_line_count", 0)
+
+        write_session_json(metrics)
+        write_monthly_rollup(metrics)
+        write_audit_log(metrics)
+        ok = write_cost_log(metrics)
+        if not ok:
+            sys.stderr.write("token-meter-write: write_cost_log failed\n")
+
+        write_cost_verify(metrics.get("session_id", ""), transcript_path, metrics["timestamp"])
+
+        if metrics.get("session_id"):
+            write_checkpoint(metrics["session_id"], new_line_count)
+        n_models = len(metrics.get("by_model") or {})
+        sys.stderr.write(
+            f"token-meter-write: parsed {n_models} model(s) from {transcript_path}\n"
+        )
+    except Exception as e:
+        sys.stderr.write(f"token-meter-write: failed: {e}\n")
+        raise
+
+
+if __name__ == "__main__":
+    main()

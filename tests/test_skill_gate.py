@@ -11,8 +11,8 @@ import subprocess
 import time
 
 _ROOT = pathlib.Path(__file__).parent.parent
-GATE = _ROOT / "scripts" / "raven-skill-gate.py"
-MARK = _ROOT / "scripts" / "raven-mark-skill.py"
+GATE = _ROOT / "scripts" / "ops" / "raven-skill-gate.py"
+MARK = _ROOT / "scripts" / "ops" / "raven-mark-skill.py"
 
 
 def _policy(root, **over):

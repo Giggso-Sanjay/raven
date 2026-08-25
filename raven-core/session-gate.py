@@ -1,1 +1,1 @@
-../scripts/session-gate.py
+../scripts/guards/session-gate.py

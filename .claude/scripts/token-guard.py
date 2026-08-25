@@ -1,1 +1,1 @@
-../../scripts/token-guard.py
+../../scripts/guards/token-guard.py

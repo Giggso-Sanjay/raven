@@ -1,5 +1,7 @@
 # RavenVault — Knowledge graph, dashboard & agent memory
 
+> **Current boot (2026-08-22):** agents use `ide-boot.py` + `.raven/memory/CARD.md`. Section 6 packaging text below still mentions copying `vault-load` as a **historical 4.2.0** recipe — do not wire `vault-load` on SessionStart.
+
 **Audience:** Developers using Raven (Claude, Grok, Codex, Enterprise)  
 **Vault root:** `~/RavenVault`  
 **Build id (HTML):** `kg-v2-grounded+cite`  
@@ -22,42 +24,39 @@ Previously: session notes were git dumps; project hubs were missing; dashboard w
 ## 2. Architecture (simple)
 
 ```
-SessionStart                    During work                 Stop
-─────────────                   ──────────                  ────
-vault-load.py                   guards + routers            token-meter-write.py
-  → digest into agent           edits / tools                 → ~/RavenVault/.metrics/
-session-start.py                                              obsidian-log.py
-  → brownfield + digest                                       → sessions/ + hub + index
-                                                              knowledge-extract.py
-                                                                → concepts/ decisions/
-                                                              (optional) knowledge_graph.py
-                                                                → graph/knowledge-graph.json
+First load                         During work                 Stop
+─────────────                      ──────────                  ────
+ide-boot.py                        guards + routers            token-meter-write.py
+  → host + load=0|1                edits / tools                 → ~/RavenVault/.metrics/
+  → if load=1: Read CARD.md                                    obsidian-log.py
+session-start.py (Claude only)                                   → vault sessions + hub
+  → brownfield/models — NO vault                                 → .raven/memory/CARD.md
+                                                               knowledge-extract.py
+                                                               (optional) knowledge_graph.py
+                                                                 → graph JSON (humans/dashboard)
 
 Human: python3 scripts/dashboard.py --html --open
-  → ~/RavenVault/dashboard.html  (tokenomics + graph + citations + local/GitHub links)
+  → ~/RavenVault/dashboard.html
 ```
 
 | Path | Role |
 |------|------|
-| `~/RavenVault` | **Canonical** Obsidian vault + metrics + dashboard |
-| `.raven/memory/` | Optional thin project-local cache only |
+| `~/RavenVault` | **Canonical** Obsidian vault + metrics + dashboard (humans) |
+| `.raven/memory/CARD.md` | **Agent** start surface (generated on Stop) |
+| `.raven/boot.json` | IDE env → native rules file |
 | `AndieVault` | **Deprecated** — do not use |
 
 ---
 
 ## 3. How agent memory works (new session)
 
-### What the agent loads at SessionStart
+### What the agent loads at start
 
-1. **`session-start.py`** runs (brownfield/greenfield, models, banner).  
-2. It shells **`vault-load.py`**, which builds a **capped digest** (≈ 2–4k chars), not the whole vault.  
-3. Digest includes:
-   - Project hub: **Current state**, **Open questions**  
-   - Last **2** session summaries (AI bullets only)  
-   - Last **3** decision one-liners  
-   - Pointer to `graph/knowledge-graph.json` if present  
-
-4. Plugin settings also run `vault-load.py --hook` for `additionalContext`.
+1. Native rules file for this IDE (see README host table) says: run **`scripts/memory/ide-boot.py`**.  
+2. If `load=1`, Read **only** `.raven/memory/CARD.md` (schema 1, open questions/decisions, dashboard path).  
+3. If `load=0` or schema ≠ 1: no vault, no graph, no invented memory.  
+4. Claude `SessionStart` still runs **`session-start.py`** (banner/models) — it does **not** shell `vault-load.py`.  
+5. `vault-load.py` remains a **manual** dump for humans.
 
 ### What is written at session end (Stop)
 
@@ -71,13 +70,15 @@ Human: python3 scripts/dashboard.py --html --open
 ### Why this is “memory”
 
 - **Human memory:** Obsidian graph + dashboard briefings.  
-- **Agent memory:** Same markdown, **curated at start**. Next session continues open questions and decisions instead of rediscovering context.  
+- **Agent memory:** the **card** (projection of hub questions/decisions), not the vault dump.  
 - **Not memory:** Full git status dumps, multi‑MB transcripts, unscoped legacy cost rollups.
 
 ### How to verify memory is live
 
 ```bash
-python3 scripts/vault-load.py
+python3 scripts/memory/ide-boot.py
+# optional human dump:
+python3 scripts/memory/vault-load.py
 # Should print open questions / last sessions for current repo
 
 # After a session ends (or dry-run):
@@ -187,13 +188,13 @@ Do not invent per-repo splits if you only have org totals — put those under to
 | File | Purpose |
 |------|---------|
 | `scripts/vault_common.py` | Hub ensure, index rebuild, wikilinks, paths |
-| `scripts/vault-load.py` | SessionStart digest |
+| `scripts/memory/vault-load.py` | Manual vault dump only (not boot) |
 | `scripts/obsidian-log.py` | Stop: trimmed session + hub + index |
 | `scripts/knowledge-extract.py` | Concepts/decisions (fail-soft) |
 | `scripts/knowledge_graph.py` | Vault → JSON graph |
 | `scripts/dashboard.py` | HTML: graph, costs, citations, local discovery |
 | `scripts/token-meter-write.py` | Per-project metrics rollup |
-| `scripts/session-start.py` | Embeds vault-load |
+| `scripts/session/session-start.py` | Claude SessionStart banner — no vault-load |
 | `agents/claude-mem.md` | RavenVault-only mem agent |
 | `plugin/settings.json` | SessionStart + Stop hooks |
 | `tests/test_knowledge_graph.py` | Parse + graph + HTML markers |
@@ -264,7 +265,7 @@ Feature release: agent vault load, knowledge graph export, dashboard graph + cit
 
 ```markdown
 ## v4.2.0 — RavenVault knowledge graph & agent memory
-- SessionStart vault-load digest (hub + open questions + recent sessions/decisions)
+- Agent boot is `ide-boot.py` + CARD.md (vault-load is not SessionStart)
 - Trimmed obsidian-log + project hub auto-create + index hygiene
 - knowledge-extract + knowledge-graph.json export
 - dashboard.py: interactive graph, dual cost headlines, on-page citations,

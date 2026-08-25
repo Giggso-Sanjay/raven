@@ -1,1 +1,1 @@
-../scripts/obsidian-log.py
+../scripts/memory/obsidian-log.py

@@ -1,1 +1,1 @@
-../scripts/dashboard-server.py
+../scripts/ops/dashboard-server.py

@@ -57,6 +57,8 @@ This is the correct behaviour when a developer runs `raven-debug` as their first
 
 ### MANIFEST EXISTS — Full Diagnostic
 
+Run first: `python3 scripts/ops/host-ensure.py --open` (python wrapper, `.agents/agents.md`, **opens dashboard**).
+
 Run these checks in order. Output ✅ or ❌ per check.
 
 1. **CLAUDE.md** — exists at project root?

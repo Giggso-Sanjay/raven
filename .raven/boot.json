@@ -1,0 +1,106 @@
+{
+  "memory": ".raven/memory/CARD.md",
+  "okf": ".raven/code-xray.json",
+  "graph_cli": "python3 scripts/code-xray.py",
+  "mcp_graph": [
+    "query_graph",
+    "get_node",
+    "get_neighbors",
+    "shortest_path",
+    "commit_impact",
+    "find_gaps"
+  ],
+  "default_rules": "AGENTS.md",
+  "hosts": {
+    "claude": {
+      "env_any": ["CLAUDECODE", "CLAUDE_PLUGIN_ROOT"],
+      "rules": "CLAUDE.md",
+      "tiers": {
+        "SIMPLE": "anthropic/claude-haiku-4-5",
+        "MEDIUM": "anthropic/claude-sonnet-5",
+        "COMPLEX": "anthropic/claude-sonnet-5-high",
+        "LOCAL_ONLY": "ollama/dolphin-mistral"
+      }
+    },
+    "grok": {
+      "env_any": ["GROK", "GROK_AGENT", "GROK_SESSION", "GROK_SESSION_ID", "GROK_CONFIG_DIR", "GROK_HOME"],
+      "rules": "AGENTS.md",
+      "tiers": {
+        "SIMPLE": "grok-4.5",
+        "MEDIUM": "grok-4.6",
+        "COMPLEX": "grok-4.6",
+        "LOCAL_ONLY": "ollama/dolphin-mistral"
+      }
+    },
+    "codex": {
+      "env_any": ["CODEX_HOME", "CODEX_THREAD_ID", "CODEX_CI"],
+      "rules": "AGENTS.md",
+      "tiers": {
+        "SIMPLE": "codex-fast",
+        "MEDIUM": "codex",
+        "COMPLEX": "codex-high",
+        "LOCAL_ONLY": "ollama/dolphin-mistral"
+      }
+    },
+    "cursor": {
+      "env_any": ["CURSOR_AGENT", "CURSOR_TRACE_ID", "CURSOR_SESSION_ID"],
+      "rules": "AGENTS.md",
+      "tiers": {
+        "SIMPLE": "cursor-fast",
+        "MEDIUM": "cursor",
+        "COMPLEX": "cursor-high",
+        "LOCAL_ONLY": "ollama/dolphin-mistral"
+      }
+    },
+    "antigravity": {
+      "env_any": ["ANTIGRAVITY", "ANTIGRAVITY_HOME", "ANTIGRAVITY_CLI_ALIAS", "GOOGLE_ANTIGRAVITY", "ANTIGRAVITY_SESSION"],
+      "rules": ".agents/agents.md",
+      "tiers": {
+        "SIMPLE": "gemini-flash",
+        "MEDIUM": "gemini-pro",
+        "COMPLEX": "gemini-pro",
+        "LOCAL_ONLY": "ollama/dolphin-mistral"
+      }
+    },
+    "windsurf": {
+      "env_any": ["WINDSURF", "WINDSURF_IDE", "WINDSURF_APP"],
+      "rules": ".windsurf/rules/ide-boot.md",
+      "tiers": {
+        "SIMPLE": "cascade-fast",
+        "MEDIUM": "cascade",
+        "COMPLEX": "cascade",
+        "LOCAL_ONLY": "ollama/dolphin-mistral"
+      }
+    },
+    "replit": {
+      "env_any": ["REPL_ID", "REPL_OWNER", "REPLIT_DB_URL", "REPLIT_DEV_DOMAIN"],
+      "rules": "replit.md",
+      "tiers": {
+        "SIMPLE": "replit-fast",
+        "MEDIUM": "replit-agent",
+        "COMPLEX": "replit-agent",
+        "LOCAL_ONLY": "ollama/dolphin-mistral"
+      }
+    },
+    "gemini": {
+      "env_any": ["GEMINI_CLI", "GEMINI_CODE_ASSIST"],
+      "rules": "GEMINI.md",
+      "tiers": {
+        "SIMPLE": "gemini-flash",
+        "MEDIUM": "gemini-pro",
+        "COMPLEX": "gemini-pro",
+        "LOCAL_ONLY": "ollama/dolphin-mistral"
+      }
+    },
+    "vscode": {
+      "env_any": ["VSCODE_PID", "VSCODE_INJECTION", "VSCODE_CWD", "VSCODE_NLS_CONFIG"],
+      "rules": "AGENTS.md",
+      "tiers": {
+        "SIMPLE": "vscode-fast",
+        "MEDIUM": "vscode",
+        "COMPLEX": "vscode-high",
+        "LOCAL_ONLY": "ollama/dolphin-mistral"
+      }
+    }
+  }
+}

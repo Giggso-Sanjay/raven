@@ -1,1 +1,1 @@
-../scripts/audit-log.py
+../scripts/session/audit-log.py

@@ -1,41 +1,43 @@
-# Raven Plugin — v5.0.0
+# Raven Plugin — v5.5.4
 
-Upload this folder via Claude Desktop to install Raven as a plugin.
+**One plugin.** File: `raven-plugin-v5.5.4.zip` (built by `bash plugin/make-plugin.sh`).
 
-## How to install
+Not Claude-Desktop-only. The zip contains Claude’s `.claude-plugin/` loader **and** `hosts/` + `install-host.sh` for Grok, Codex, Cursor, AntiGravity, Windsurf, Replit, and Gemini CLI. Details: [HOSTS.md](HOSTS.md).
 
-1. Clone or download [giggsoinc/raven](https://github.com/giggsoinc/raven)
-2. Open **Claude Desktop → Settings → Extensions → Add plugin**
-3. Upload `raven-plugin-v4.1.0.zip` — or select the `raven/plugin/` folder directly
-4. Done — 61 skills and 10 guard agents load automatically
+## Install
 
-## What's included
+**Claude Code**
 
-- **61 skills** — Andie v6.3 with mode splitting, 6 Kaizen methods, Guru, capability routing. All domain specialists including ML, Graph DB, Workflow, MLOps. Raven core skills.
-- **10 guard agents** — manifest-checker, stack-validator, style-enforcer, architecture-guard, db-guard, skill-guard, claude-mem, guard-git-watch, odoo-guard, salesforce-guard
-- **10 slash commands** — /raven-debug, /raven-review, /raven-approve, /raven-harden, /raven-incident, and more
-- **Scripts** — CVE check, secret scan, audit log, work-mode detection
+```bash
+git clone https://github.com/giggsoinc/raven.git
+claude plugin install ./raven/plugin
+```
 
-## What's new in v4.0.0 (major)
+Or unzip `raven-plugin-v5.5.4.zip` and `claude plugin install /path/to/extracted`.
 
-- **Honesty pass** — docs now match code: event-driven guards (not "always-on"),
-  previous-session token meter, cross-session memory (not "token reduction"),
-  verified **61 skills** (was mislabelled 60/46/55).
-- **Onboarding fork** — Andie greets with Tour / Setup / Guru on first install.
-- **Force-path commands** — `/andie` + `/andie-jr`; the plugin now bundles **12 commands**
-  (previous versions shipped none).
-- **Notifications** — `notify.py` SMTP + Slack at commit; `install-claudemd.py` safe installer.
-- **Plain-English guards** — help-toned messages with remediation, not "VIOLATION".
-- 61 skills · 10 guard agents · 15 scripts.
+**Claude Desktop:** Settings → Extensions → Add plugin → drop the zip.
 
-## Previously — v4.0.0
+**Grok / Codex / Cursor / AntiGravity / Windsurf / Replit / Gemini**
 
-- **Andie v6.3** — mode splitting (-56% per-message tokens), 6 Kaizen methods, Guru explainer, capability routing
-- **4 Tier 1 specialists** — ml-specialist, graph-db-specialist, workflow-specialist, ml-ops-specialist
-- **Domain packs** — agent-frameworks, local-dev (loaded by dynamic-specialist)
-- **Oracle version matrix** — 19c/21c/23ai capability awareness
-- **Docker-compose patterns** — local dev support in devops-specialist
+```bash
+unzip raven-plugin-v5.5.4.zip -d raven-plugin
+bash raven-plugin/install-host.sh /path/to/your-project
+```
 
-## Update
+That copies `AGENTS.md` / `.cursor/rules` / `.agents/agents.md` / `GEMINI.md` / `replit.md` / `scripts/` as required. There is no second zip.
 
-Re-download the repo and re-upload `raven-plugin-v4.1.0.zip` — or pull latest and re-select the folder.
+Then in a project: `/raven-init` (Claude) or copy `.raven/manifest.json` from the engine repo.
+
+## What you can do with this plugin
+
+| You want to | Command / path |
+|---|---|
+| Plan | Andie (`/andie`) |
+| Debug | Andie-Jr (`/andie-jr`) |
+| Route + cost toast | `scripts/routing/model-router.py` |
+| Spend (local calc) | Dashboard Costs, `/run-costs` |
+| Graph | `scripts/dashboard` OKF |
+| Init a project | `/raven-init` |
+| Other IDEs | `bash install-host.sh <project>` |
+
+`#comprehension_debt` `#ai_coding` `#claude_code` `#grok` `#codex` `#discipline_engine` `#token_cost`

@@ -113,12 +113,24 @@ libs:       {{count}} libraries detected
 
 Guards enabled: bash-ban-raw-tools · cbm-code-discovery-gate ·
                 cve-prompt-guard · secret-scan · audit-log
+AIRTaaS MCP: https://sandbox.airtaas.ai/mcp (login at sandbox.airtaas.ai — not stored)
+LangSmith:   off unless they already use LANGCHAIN_TRACING_V2
 
 → Accept · Modify · Reject
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 ```
 
-On accept → write `.raven/manifest.json` → validate → commit with audit trail.
+On accept → write `.raven/manifest.json` and `.raven/dashboard-settings.json` (AIRTaaS URL fixed, enabled false until they log in; no secrets) → validate → **host glue + dashboard:**
+
+```bash
+python3 scripts/ops/raven-first.py --boot
+```
+
+Fallback: `python3 "${CLAUDE_PLUGIN_ROOT}/scripts/ops/raven-first.py" --boot`. That copies `scripts/raven-python.sh`, `scripts/routing|memory|session|ops`, `AGENTS.md`, `.agents/agents.md` (AntiGravity/Codex/Grok contract), and runs ide-boot. Public users do not need extra instructions. Then commit manifest only (settings stay gitignored).
+
+Optional after accept (does not count as a 3rd scan question): “Open AIRTaaS login in the browser now?” If yes:
+`python3 -c "import webbrowser; webbrowser.open('https://sandbox.airtaas.ai')"`
+Never collect email/password. Login is on AIRTaaS.
 
 ---
 
@@ -158,9 +170,10 @@ If Git is not initialized → write file only, skip commit, note: "Manifest save
 After commit, Andie returns one final line:
 
 ```
-✅ Raven is loaded. Manifest committed.
+✅ Raven is loaded. Manifest committed. Dashboard opened.
+   Every turn: python3 scripts/ops/raven-first.py --prompt "…"
    Ask me anything — I'll route to the right specialist automatically.
-   📊 View metrics anytime: run `raven dashboard` or open ~/RavenVault/dashboard.html
+   Settings: dashboard → Settings. AIRTaaS login button → sandbox.airtaas.ai (MCP will not work until you log in there).
    Free tier — local only. Enterprise (dashboards, compliance, support): giggso.com/raven
 ```
 

@@ -5,6 +5,46 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 
 ---
 
+## [5.5.4] — 2026-08-23 — GitHub version banner on session start
+
+- Session start + first router turn: current vs GitHub latest; upgrade prompt; 5 bullets.
+
+## [5.5.3] — 2026-08-23 — plugin-root first-load
+
+- Current zip: `plugin/raven-plugin-v5.5.3.zip`. Tag `v5.5.3`.
+- `scripts/ops/raven-first.py` finds the plugin engine and copies it into any cwd.
+- `host-ensure` now copies `scripts/{routing,memory,session,ops}` when missing.
+- AGENTS / Cursor / Windsurf / VS Code / Gemini / Replit lead with raven-first (not raven-python.sh alone).
+
+## [5.5.2] — 2026-08-23 — first-load all IDEs
+
+- Current zip: `plugin/raven-plugin-v5.5.2.zip`. Tag `v5.5.2`.
+- Unified first-load: ide-boot → memory card → session-start → every-turn router (Cursor/Windsurf/VS Code/Gemini/Replit included).
+- `ide-boot` prints `first_load=`; session-start lists host rules + educate + tiers.
+
+## [5.5.1] — 2026-08-23 — host router + educate; install pin
+
+- Current zip: `plugin/raven-plugin-v5.5.1.zip`. Tag `v5.5.1`.
+- Session/prompt start prints version, educate, expected SIMPLE/MEDIUM/COMPLEX.
+- Global Claude: `model-router.py --hook` + deny-mode push-gate.
+
+## [5.5.0] — 2026-08-22 — one plugin, every host
+
+- One zip: `plugin/raven-plugin-v5.5.0.zip` (`bash plugin/make-plugin.sh`, version from `raven-core/VERSION`).
+- Host glue in the zip: `AGENTS.md`, `.agents/agents.md`, `.cursor/rules`, `.windsurf/rules`, `GEMINI.md`, `replit.md`, `CLAUDE.md`, `install-host.sh`.
+- Claude loader still `.claude-plugin/`. Not a second plugin.
+- Scripts packaged from canonical `scripts/` subtrees (router, cost, dashboard).
+- Dashboard Overview above Graph; costs grouped by repo then IDE; graph file open via local `/api/open`.
+
+## [Unreleased] — agent boot card + IDE router
+
+- **Stop** writes `.raven/memory/CARD.md` (in-repo). Vault stays `~/RavenVault` for humans.
+- **SessionStart** no longer runs `vault-load.py`. `vault-load.py` is manual only.
+- **First load:** `scripts/memory/ide-boot.py` + `.raven/boot.json` (`load=0|1`).
+- Hosts: Claude (`CLAUDE.md`), Grok/Codex/Cursor (`AGENTS.md`), AntiGravity (`.agents/agents.md`), Windsurf, Replit (`replit.md`), Gemini (`GEMINI.md`).
+
+---
+
 ## [4.3.0] — 2026-08-04
 
 ### Tokenomics metering + vibe-coder dashboard

@@ -23,6 +23,28 @@
             "type": "command",
             "timeout": 10,
             "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/scripts/cve-prompt-guard.py\" 2>/dev/null || true"
+          },
+          {
+            "type": "command",
+            "timeout": 5,
+            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/scripts/push-approve.py\" 2>/dev/null || true"
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "Write|Edit|MultiEdit|NotebookEdit|Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "timeout": 5,
+            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/scripts/route-gate.py\" 2>/dev/null || true"
+          },
+          {
+            "type": "command",
+            "timeout": 5,
+            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/scripts/push-gate.py\" 2>/dev/null || true"
           }
         ]
       }
@@ -39,9 +61,27 @@
           },
           {
             "type": "command",
+            "timeout": 8,
+            "async": true,
+            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/scripts/ide-boot.py\" 2>/dev/null || true"
+          },
+          {
+            "type": "command",
             "timeout": 5,
             "async": false,
-            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/scripts/vault-load.py\" 2>/dev/null || true"
+            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/scripts/model-router.py\" 2>/dev/null || true"
+          },
+          {
+            "type": "command",
+            "timeout": 8,
+            "async": true,
+            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/scripts/run_costs.py\" 2>/dev/null || true"
+          },
+          {
+            "type": "command",
+            "timeout": 5,
+            "async": false,
+            "command": "rm -f \"${CLAUDE_PROJECT_DIR:-.}/.raven/.push-mode\" \"${CLAUDE_PROJECT_DIR:-.}/.raven/.push-approved\" \"${CLAUDE_PROJECT_DIR:-.}/.raven/.push-notice-shown\""
           }
         ]
       }
@@ -69,7 +109,8 @@
         "hooks": [
           {
             "type": "command",
-            "async": true,
+            "timeout": 30,
+            "async": false,
             "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/scripts/token-meter-write.py\" 2>/dev/null || true"
           },
           {
@@ -85,11 +126,6 @@
           {
             "type": "command",
             "async": true,
-            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/scripts/raven-xray.py\" 2>/dev/null || true"
-          },
-          {
-            "type": "command",
-            "async": true,
             "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/scripts/obsidian-log.py\" 2>/dev/null || true"
           },
           {
@@ -101,6 +137,11 @@
             "type": "command",
             "async": true,
             "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/scripts/session-gate.py\" 2>/dev/null || true"
+          },
+          {
+            "type": "command",
+            "async": true,
+            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/scripts/code-xray.py\" 2>/dev/null || true"
           }
         ]
       }

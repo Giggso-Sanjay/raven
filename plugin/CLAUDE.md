@@ -1,4 +1,4 @@
-# CLAUDE.md — Raven Discipline Engine v5.0.0
+# CLAUDE.md — Raven Discipline Engine v5.5.4
 
 > **This file is the contract.** Claude reads this on every turn. The rules below are not aspirational — they are how Claude must behave in this project.
 
@@ -84,7 +84,7 @@ These are the **real Claude Code hooks** wired in this project. `PostEdit` and `
 
 | Hook Event | Fires When | Action |
 |---|---|---|
-| `SessionStart` | New Claude session opens | `session-start.py` + `vault-load.py` digest |
+| `SessionStart` | New Claude session opens | `session-start.py` only. Memory: `ide-boot.py` then Read `.raven/memory/CARD.md` if `load=1`. |
 | `UserPromptSubmit` | Every user message arrives | `triage-router.py` → `architect-router.py` → `model-router.py` → `cve-prompt-guard.py` |
 | `PostToolUse` (matcher: `Write\|Edit\|MultiEdit`) | After any file write/edit | `secret-scan.py` + `db-guard.py` (async) |
 | `Stop` | Session ends | `token-guard.py` + `obsidian-log.py` (hub + trimmed session) + `knowledge-extract.py` (async) |
@@ -245,4 +245,4 @@ python3 scripts/install-claudemd.py --source path/to/new/CLAUDE.md --target ./CL
 
 ---
 
-*Raven v5.0.0 — MIT — github.com/giggsoinc/raven*
+*Raven v5.5.4 — MIT — github.com/giggsoinc/raven*

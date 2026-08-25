@@ -57,7 +57,24 @@ This is the correct behaviour when a developer runs `raven-debug` as their first
 
 ### MANIFEST EXISTS — Full Diagnostic
 
-Run these checks in order. Output ✅ or ❌ per check.
+**First (mandatory, public path):** engine into app repo + dashboard — do not skip:
+
+```bash
+python3 scripts/ops/raven-first.py --boot
+```
+
+Fallback if the app repo has no `scripts/ops/raven-first.py` yet:
+
+```bash
+python3 "${CLAUDE_PLUGIN_ROOT}/scripts/ops/raven-first.py" --boot
+```
+
+(`RAVEN_PLUGIN_ROOT` also works.) This copies `scripts/raven-python.sh`, `scripts/routing|memory|session|ops`, `.agents/agents.md` / `AGENTS.md`, and runs ide-boot. Then run checks in order. Output ✅ or ❌ per check.
+
+**0-HARD — model-router (primary Codex / public-plugin gate):** After raven-first, `scripts/routing/model-router.py` MUST exist in the project **or** under `CLAUDE_PLUGIN_ROOT` / `RAVEN_PLUGIN_ROOT`. If both are missing → **FAIL** immediately. Do **not** treat Claude `Notification` hook registration as the primary Codex error — empty/missing router is the defect.
+
+0. **raven-python.sh** — exists, executable, `bash scripts/raven-python.sh -c "import encodings"` works?
+0b. **`.agents/agents.md` or `AGENTS.md`** — present (AntiGravity / Grok / Codex contract)?
 
 1. **CLAUDE.md** — exists at project root?
 2. **manifest.json** — valid JSON, all required fields present?
@@ -68,7 +85,7 @@ Run these checks in order. Output ✅ or ❌ per check.
 7. **.env files** — present but gitignored? (warn if exposed)
 8. **.claude/agents/** — list all loaded agents (count + names)
 9. **.claude/skills/** — list all loaded skills (count + names)
-10. **.claude/settings.json** — hooks registered (PreToolUse, PostToolUse, PreCompact, Notification)?
+10. **.claude/settings.json** — hooks registered (PreToolUse, PostToolUse, PreCompact; Notification is Claude-only, not the Codex primary error)?
 11. **.git/hooks/pre-commit** — executable?
 12. **.raven/architecture.md** — exists? (warn if missing — not a hard stop)
 13. **manifest.secrets.json permissions** — warn if not chmod 600
@@ -99,6 +116,9 @@ Run these checks in order. Output ✅ or ❌ per check.
   ⚠️   .raven/architecture.md missing — create before first commit
 
   CLEARED — 2 warnings
+
+  📊 Dashboard: this project's scoped link is in .raven/dashboard-link.md
+     (one shared dashboard, filtered to this repo — no separate build)
 
 ─────────────────────────────────────────────────
 ```

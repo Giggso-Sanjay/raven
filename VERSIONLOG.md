@@ -5,6 +5,54 @@ adds an entry here (newest first), and must pass `scripts/check-version-consiste
 (CI: `raven-version-consistency-check`). Historical changelogs in `docs/` are
 never rewritten — this file is the roll-up index.
 
+## v5.5.4 — 2026-08-23 — Session-start GitHub version check (patch)
+
+On session start and the first router turn, Raven checks github.com/giggsoinc/raven
+tags. Prints current **or** newer-available and asks to upgrade. Lists up to five
+bullets from VERSIONLOG for that version. Fail-soft if offline. Tag `v5.5.4`.
+
+---
+
+## v5.5.3 — 2026-08-23 — Plugin-root first-load copies engine into app repo (patch)
+
+Public Codex/Cursor often run in an app repo with no `scripts/`. `raven-first.py`
+locates the plugin engine (`CLAUDE_PLUGIN_ROOT` / `RAVEN_PLUGIN_ROOT` / home plugins),
+runs `host-ensure` to copy `raven-python.sh` + `scripts/{routing,memory,session,ops}`
++ AGENTS glue into the project, then execs boot/router/cost. Host docs lead with
+`python3 scripts/ops/raven-first.py --prompt` (plugin-root fallback). Tag `v5.5.3`.
+
+---
+
+## v5.5.2 — 2026-08-23 — First-load UX on every IDE (patch)
+
+Same first-load sequence for Claude, Codex, Grok, AntiGravity, Cursor, Windsurf,
+VS Code, Gemini, and Replit: `ide-boot` → Read `memory=` if `load=1` →
+`model-router --session-start` → every-turn router. Session-start banner lists
+this host's rules file, educate mode, and expected tiers. Tag `v5.5.2`.
+
+---
+
+## v5.5.1 — 2026-08-23 — Host router + educate on every IDE (patch)
+
+Fixes silent routing on Claude (wrong hook JSON key / `$PROMPT`) and honor-system
+educated-push on Grok/Codex/Cursor/AntiGravity/Windsurf/VS Code. Session start
+prints version, educate mode, and expected SIMPLE/MEDIUM/COMPLEX models. Toast
+adds `educate=` and `expected=`. Tag `v5.5.1` is the install pin (5.5.0 lived on
+main without a tag). `install-user-claude-hooks.py` rewires `~/.claude` to
+`model-router.py --hook` and the deny-mode push-gate.
+
+---
+
+## v5.5.0 — 2026-08-22 — One plugin, every host (major)
+
+Single artifact `plugin/raven-plugin-v5.5.0.zip`. Version is `raven-core/VERSION`.
+`make-plugin.sh` reads that file. Zip includes Claude `.claude-plugin/` **and**
+`hosts/` + `install-host.sh` for Grok, Codex, Cursor, AntiGravity, Windsurf,
+Replit, Gemini. Engine trees `scripts/{session,routing,memory,guards,ops,dashboard}`
+are in the zip. Dashboard: Overview-first, cost by repo then IDE, graph search,
+open-file via `dashboard-server.py` `/api/open`. Host router + cost-log Stop path
+fixed for Claude JSONL (`type=assistant` / `sessionId`).
+
 ---
 
 ## v5.0.0 — 2026-08-07 — Discipline Fix Chain (major)

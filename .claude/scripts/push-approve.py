@@ -1,15 +1,12 @@
 #!/usr/bin/env python3
-"""push-approve.py — UserPromptSubmit hook for the Educated Push Contract.
+"""push-approve.py — UserPromptSubmit for Educate.
 
-Watches the user's message for:
-  'guided' / 'auto'  → sets session mode in .raven/.push-mode
-  go-ahead words     → creates .raven/.push-approved (opens push-gate for a turn)
-  'Lucky'            → existing opt-out keyword, also opens the gate
+  educate off | auto | Lucky  → persist .raven/educate.json mode=off
+  educate on | guided         → persist mode=guided
+  go ahead / approved / GO    → .raven/.push-approved (one turn)
 
-Any other message clears a leftover approval flag so each change cycle starts
-clean. This script is the ONLY flag cleaner — a Stop-hook rm was removed after
-it raced prompt submission and deleted fresh approvals. Mode persists until
-SessionStart resets it. Fail-soft: any internal error exits 0.
+Any other message clears leftover .push-approved.
+Does not delete educate.json. Fail-soft.
 """
 
 import json
@@ -19,11 +16,17 @@ import sys
 
 APPROVAL_PATTERN = re.compile(
     r"(?:\bgo[- ]?ahead\b|\bapproved?\b|\bproceed\b|\bship it\b|\blgtm\b"
-    r"|\bdo it\b|\bbuild it\b|^\s*go\s*$|^\s*yes\s*$|\bLucky\b)",
+    r"|\bdo it\b|\bbuild it\b|^\s*go\s*$|^\s*yes\s*$)",
     re.IGNORECASE,
 )
-GUIDED_PATTERN = re.compile(r"^\s*guided\b|\bguided mode\b", re.IGNORECASE)
-AUTO_PATTERN = re.compile(r"^\s*auto\b|\bauto mode\b", re.IGNORECASE)
+OFF_PATTERN = re.compile(
+    r"(?:\beducate\s+off\b|\bauto mode\b|^\s*auto\s*$|\bLucky\b)",
+    re.IGNORECASE,
+)
+ON_PATTERN = re.compile(
+    r"(?:\beducate\s+on\b|\bguided mode\b|^\s*guided\s*$|^\s*educate\s*$)",
+    re.IGNORECASE,
+)
 
 
 def raven_path(*parts: str) -> str:
@@ -37,26 +40,34 @@ def write_file(path: str, content: str) -> None:
         fh.write(content)
 
 
+def set_educate(mode: str) -> None:
+    write_file(raven_path("educate.json"), json.dumps({"mode": mode}, indent=2) + "\n")
+
+
 def main() -> None:
     payload = json.load(sys.stdin)
     prompt = payload.get("prompt", "") or ""
 
-    if GUIDED_PATTERN.search(prompt):
-        write_file(raven_path(".push-mode"), "guided")
-        print("🎓 EDUCATED PUSH: GUIDED mode set for this session — every change "
-              "needs a 200-word briefing and the user's go-ahead first.")
+    if OFF_PATTERN.search(prompt):
+        set_educate("off")
+        write_file(raven_path(".push-approved"), prompt[:200])
+        print("⚡ EDUCATE: off (Lucky/auto). Writes allowed. User owns risk. "
+              "Persists in .raven/educate.json until educate on.")
         return
-    if AUTO_PATTERN.search(prompt):
-        write_file(raven_path(".push-mode"), "auto")
-        print("⚡ EDUCATED PUSH: AUTO mode set for this session — write gate open, "
-              "no briefings required. User owns risk.")
+    if ON_PATTERN.search(prompt):
+        set_educate("guided")
+        try:
+            os.remove(raven_path(".push-approved"))
+        except OSError:
+            pass
+        print("🎓 EDUCATE: guided. Briefing then go-ahead before writes. "
+              "Persists in .raven/educate.json.")
         return
 
     if APPROVAL_PATTERN.search(prompt):
         write_file(raven_path(".push-approved"), prompt[:200])
-        print("✅ EDUCATED PUSH: approval detected — write gate OPEN for this turn. "
-              "Execute the approved briefing, then confirm in max 150 words "
-              "(bullets + changed files).")
+        print("✅ EDUCATE: go-ahead — write gate OPEN this turn. "
+              "Execute the briefing, then confirm in max 150 words.")
     else:
         try:
             os.remove(raven_path(".push-approved"))

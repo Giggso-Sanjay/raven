@@ -1,6 +1,6 @@
 ---
 name: claude-mem
-description: "Use PROACTIVELY at session start and end to manage persistent memory. At start: load RavenVault digest (hub + open questions). At end: ensure project hub, update index, link last session. Canonical vault is ~/RavenVault. Optional thin cache: .raven/memory/."
+description: "Use PROACTIVELY at session start and end to manage persistent memory. At start: run ide-boot.py; if load=1 Read CARD.md. At end: obsidian-log writes vault + CARD. Canonical vault is ~/RavenVault (humans). Agent boot is the card."
 model: haiku
 tools:
   - Bash
@@ -11,7 +11,7 @@ tools:
 
 **Canonical vault:** `~/RavenVault`  
 **Deprecated:** `AndieVault` — do not write there.  
-**Optional mirror:** `.raven/memory/` last digest only (gitignored / small).
+**Agent start:** `.raven/memory/CARD.md` via `ide-boot.py` (`load=1`).
 
 No secrets. No network. Local markdown only.
 
@@ -22,12 +22,12 @@ No secrets. No network. Local markdown only.
 1. Ensure hub exists (writer does this too):
 
 ```bash
-python3 "${CLAUDE_PROJECT_DIR:-.}/scripts/vault-load.py" 2>/dev/null \
-  || python3 "${CLAUDE_PROJECT_DIR:-.}/.claude/scripts/vault-load.py" 2>/dev/null \
+python3 "${CLAUDE_PROJECT_DIR:-.}/scripts/memory/ide-boot.py" 2>/dev/null \
+  || python3 scripts/memory/ide-boot.py 2>/dev/null \
   || true
 ```
 
-2. Surface to the user **only** if open questions or carry-forwards appear in the digest.
+2. If `load=1`, Read only the `memory=` path. Surface open questions from the **card**, not a vault dump.
 
 3. Do **not** load full session files or multi‑MB vault dumps.
 
@@ -56,7 +56,7 @@ python3 scripts/knowledge_graph.py 2>/dev/null || true
 
 ```bash
 mkdir -p .raven/memory
-python3 scripts/vault-load.py > .raven/memory/last-digest.md 2>/dev/null || true
+python3 scripts/memory/ide-boot.py 2>/dev/null || true
 ```
 
 ---

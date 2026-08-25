@@ -1,0 +1,198 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Raven — Mockup</title>
+<style>
+:root{
+  --bg:#0e1116;--panel:#161b23;--panel2:#1c2330;--line:#232c3a;
+  --ink:#e6ebf2;--ink2:#9aa7b8;--ink3:#5f6d80;
+  --accent:#5aa2e0;--good:#3fb07f;--warn:#e0a030;--bad:#e05252;
+  --r:10px;
+}
+*{box-sizing:border-box;margin:0}
+body{background:var(--bg);color:var(--ink);font:14px/1.55 -apple-system,"Segoe UI",sans-serif;display:flex;min-height:100vh}
+/* ── Sidebar ── */
+aside{width:210px;flex-shrink:0;background:var(--panel);border-right:1px solid var(--line);
+  padding:18px 12px;position:sticky;top:0;height:100vh;display:flex;flex-direction:column;gap:2px}
+aside h1{font-size:16px;padding:0 10px 14px;letter-spacing:.3px}
+aside h1 span{color:var(--ink3);font-weight:400;font-size:12px;display:block}
+.nav{display:flex;align-items:center;gap:10px;padding:9px 10px;border-radius:8px;color:var(--ink2);
+  cursor:pointer;font-size:14px;border:0;background:none;width:100%;text-align:left}
+.nav:hover{background:var(--panel2);color:var(--ink)}
+.nav.on{background:var(--panel2);color:var(--ink);font-weight:600}
+.nav .ic{width:20px;text-align:center}
+aside .foot{margin-top:auto;color:var(--ink3);font-size:11px;padding:10px}
+/* ── Main ── */
+main{flex:1;min-width:0;padding:22px 26px}
+.view{display:none}.view.on{display:block}
+h2{font-size:18px;margin-bottom:4px}
+.sub{color:var(--ink2);font-size:13px;margin-bottom:18px}
+/* tiles */
+.tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px;margin-bottom:18px}
+.tile{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);padding:14px 16px}
+.tile .k{color:var(--ink2);font-size:12px;margin-bottom:6px}
+.tile .v{font-size:22px;font-weight:650}
+.tile .s{color:var(--ink3);font-size:12px;margin-top:4px}
+.tile.hero{border-left:3px solid var(--good)}
+/* card */
+.card{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);padding:16px;margin-bottom:16px}
+.card h3{font-size:14px;color:var(--ink2);font-weight:600;margin-bottom:10px}
+/* table */
+table{width:100%;border-collapse:collapse;font-size:13px}
+th{color:var(--ink3);text-align:left;font-weight:500;padding:6px 10px;border-bottom:1px solid var(--line)}
+td{padding:8px 10px;border-bottom:1px solid var(--line)}
+tr:last-child td{border-bottom:0}
+tr.rowlink{cursor:pointer}tr.rowlink:hover td{background:var(--panel2)}
+.num{text-align:right;font-variant-numeric:tabular-nums}
+.dim{color:var(--ink3)}
+.pill{font-size:11px;padding:1px 8px;border-radius:99px;background:var(--panel2);color:var(--ink2)}
+.pill.act{color:var(--good)}
+/* activity list */
+.act li{list-style:none;padding:8px 0;border-bottom:1px solid var(--line);display:flex;gap:10px}
+.act li:last-child{border:0}
+.act .when{color:var(--ink3);font-size:12px;white-space:nowrap;width:88px}
+.kind{font-size:11px;padding:1px 7px;border-radius:5px;font-weight:600}
+.kind.feat{background:#1c3a2c;color:#6fd0a0}.kind.fix{background:#3a2320;color:#e09080}
+iframe{width:100%;height:calc(100vh - 170px);border:1px solid var(--line);border-radius:var(--r);background:#12161c}
+select{background:var(--panel2);color:var(--ink);border:1px solid var(--line);border-radius:6px;padding:5px 8px;font-size:13px}
+a{color:var(--accent);text-decoration:none}
+.toolrow{display:flex;gap:10px;align-items:center;margin-bottom:12px;flex-wrap:wrap}
+label.chk{color:var(--ink2);font-size:13px;cursor:pointer}
+</style></head><body data-palette="#5aa2e0,#3fb07f,#e0a030,#9b6dd6">
+
+<aside>
+  <h1>🪶 Raven <span>raven · main</span></h1>
+  <button class="nav on" data-v="home"><span class="ic">⬛</span>Overview</button>
+  <button class="nav" data-v="tree"><span class="ic">🌳</span>Code Tree</button>
+  <button class="nav" data-v="repos"><span class="ic">📦</span>Repos</button>
+  <button class="nav" data-v="costs"><span class="ic">💰</span>Costs</button>
+  <button class="nav" data-v="guards"><span class="ic">🛡</span>Guards</button>
+  <div class="foot">Generated 2026-08-15 · window 30d<br><a href="dashboard.html">old dashboard ↗</a></div>
+</aside>
+
+<main>
+
+<!-- ── OVERVIEW ── -->
+<section class="view on" id="v-home">
+  <h2>Everything is fine.</h2>
+  <p class="sub">Nothing blocked · 326 guard events logged, all clean · window Jul 16 → Aug 15</p>
+  <div class="tiles">
+    <div class="tile hero"><div class="k">Status</div><div class="v" style="color:var(--good)">✅ All clear</div><div class="s">guards announce themselves when they fire</div></div>
+    <div class="tile"><div class="k">Spend — 30 days</div><div class="v">$0.0062</div><div class="s">all repos · avg $0.00002 / session</div></div>
+    <div class="tile"><div class="k">Sessions</div><div class="v">297</div><div class="s">24,895 tokens</div></div>
+    <div class="tile"><div class="k">Hottest file</div><div class="v" style="font-size:15px">dashboard.py</div><div class="s">feat: repo-aware code trees</div></div>
+  </div>
+  <div class="card">
+    <h3>Recent activity — latest first <span class="dim">(click → code tree)</span></h3>
+    <ul class="act">
+      <li><span class="when">today 18:19</span><span class="kind feat">feat</span><span><b>raven</b> — repo-aware code trees: per-repo builds, switcher, click-through</span></li>
+      <li><span class="when">today 13:04</span><span class="kind feat">feat</span><span><b>raven</b> — dashboard rehash: nav, verdict strip, Guru bullets</span></li>
+      <li><span class="when">Aug 14</span><span class="kind fix">fix</span><span><b>aryx</b> — dashboard C13–C15 pipeline silent-failure gaps</span></li>
+      <li><span class="when">Aug 7</span><span class="kind fix">fix</span><span><b>raven-codex</b> — model-router: never block on missing --prompt</span></li>
+    </ul>
+  </div>
+</section>
+
+<!-- ── CODE TREE ── -->
+<section class="view" id="v-tree">
+  <h2>Code Tree</h2>
+  <p class="sub">What the codebase looks like, and why each file changed — zoom with scroll, drag to pan.</p>
+  <div class="toolrow">
+    <span class="dim">Repo:</span>
+    <select id="treeSel" onchange="setTree(this.value)">
+      <option value="code-tree-RAVEN.html">raven</option>
+      <option value="code-tree-fin-processor.html">fin-processor</option>
+      <option value="code-tree-Raven-Codex.html">raven-codex</option>
+      <option value="code-tree-raven-enterprise.html">raven-enterprise</option>
+      <option value="code-tree-Aryx-oci.html">aryx-oci</option>
+    </select>
+    <a id="treeOpen" href="code-tree-RAVEN.html" target="_blank">open full page ↗</a>
+  </div>
+  <iframe id="treeIF" src="code-tree-RAVEN.html"></iframe>
+</section>
+
+<!-- ── REPOS ── -->
+<section class="view" id="v-repos">
+  <h2>Repos</h2>
+  <p class="sub">Every repo Raven remembers — latest activity first. Click a row to open its code tree.</p>
+  <div class="toolrow"><label class="chk"><input type="checkbox" id="f30" checked onchange="filt()"> active in last 30 days</label></div>
+  <div class="card" style="padding:4px 8px">
+  <table id="repoTbl">
+    <thead><tr><th>Repo</th><th>Last activity</th><th class="num">Sessions</th><th class="num">Tokens</th><th class="num">Cost</th><th></th></tr></thead>
+    <tbody>
+      <tr class="rowlink" data-a="1" onclick="goTree('code-tree-RAVEN.html')"><td><b>raven</b> <span class="pill act">active</span></td><td class="dim">today 18:19</td><td class="num">297</td><td class="num">24,895</td><td class="num">$0.0062</td><td><a href="#">GitHub ↗</a></td></tr>
+      <tr class="rowlink" data-a="1" onclick="goTree('code-tree-Aryx-oci.html')"><td><b>aryx</b> <span class="pill act">active</span></td><td class="dim">Aug 14 22:10</td><td class="num dim">0</td><td class="num dim">0</td><td class="num dim">$0</td><td><a href="#">GitHub ↗</a></td></tr>
+      <tr class="rowlink" data-a="1" onclick="goTree('code-tree-Raven-Codex.html')"><td><b>raven-codex</b> <span class="pill act">active</span></td><td class="dim">Aug 7 07:42</td><td class="num dim">0</td><td class="num dim">0</td><td class="num dim">$0</td><td><a href="#">GitHub ↗</a></td></tr>
+      <tr class="rowlink" data-a="1"><td><b>giggso</b> <span class="pill act">active</span></td><td class="dim">Aug 6 21:56</td><td class="num dim">0</td><td class="num dim">0</td><td class="num dim">$0</td><td><a href="#">GitHub ↗</a></td></tr>
+      <tr class="rowlink" data-a="1"><td><b>site</b> <span class="pill act">active</span></td><td class="dim">Aug 4 12:40</td><td class="num dim">0</td><td class="num dim">0</td><td class="num dim">$0</td><td><a href="#">GitHub ↗</a></td></tr>
+      <tr class="rowlink" data-a="1" onclick="goTree('code-tree-fin-processor.html')"><td><b>fin-processor</b> <span class="pill act">active</span></td><td class="dim">Aug 4 12:40</td><td class="num dim">0</td><td class="num dim">0</td><td class="num dim">$0</td><td><a href="#">GitHub ↗</a></td></tr>
+      <tr class="rowlink" data-a="1" onclick="goTree('code-tree-raven-enterprise.html')"><td><b>raven-enterprise</b> <span class="pill act">active</span></td><td class="dim">Aug 4 12:39</td><td class="num dim">0</td><td class="num dim">0</td><td class="num dim">$0</td><td><a href="#">GitHub ↗</a></td></tr>
+      <tr class="rowlink" data-a="0"><td><b>andie</b> <span class="pill">idle</span></td><td class="dim">Jun 27</td><td class="num dim">0</td><td class="num dim">0</td><td class="num dim">$0</td><td></td></tr>
+      <tr class="rowlink" data-a="0"><td><b>lockey</b> <span class="pill">idle</span></td><td class="dim">Jun 4</td><td class="num dim">0</td><td class="num dim">0</td><td class="num dim">$0</td><td></td></tr>
+    </tbody>
+  </table>
+  </div>
+  <p class="dim" style="font-size:12px">Knowledge-graph briefings live one click deeper: repo row → tree → file panel. (In the real build, the vault graph stays available from the repo panel.)</p>
+</section>
+
+<!-- ── COSTS ── -->
+<section class="view" id="v-costs">
+  <h2>Costs</h2>
+  <p class="sub">Raven-metered (token × rate card), not invoices. Every number keeps its citation in the real build.</p>
+  <div class="tiles">
+    <div class="tile"><div class="k">All repos — 30d</div><div class="v">$0.0062</div><div class="s">297 sessions · 24,895 tokens</div></div>
+    <div class="tile"><div class="k">This repo</div><div class="v">$0.0062</div><div class="s">raven</div></div>
+    <div class="tile"><div class="k">Live session</div><div class="v">$0.0097</div><div class="s">38k tokens (overhead + user)</div></div>
+  </div>
+  <div class="card"><h3>Daily spend</h3>
+    <div style="display:flex;align-items:flex-end;gap:6px;height:120px;padding-top:8px">
+      <div title="Aug 09 — $0.0004" style="flex:1;background:#5aa2e0;border-radius:4px 4px 0 0;height:18%"></div>
+      <div title="Aug 10 — $0.0006" style="flex:1;background:#5aa2e0;border-radius:4px 4px 0 0;height:26%"></div>
+      <div title="Aug 11 — $0.0003" style="flex:1;background:#5aa2e0;border-radius:4px 4px 0 0;height:14%"></div>
+      <div title="Aug 12 — $0.0005" style="flex:1;background:#5aa2e0;border-radius:4px 4px 0 0;height:22%"></div>
+      <div title="Aug 13 — $0.0008" style="flex:1;background:#5aa2e0;border-radius:4px 4px 0 0;height:36%"></div>
+      <div title="Aug 14 — $0.0014" style="flex:1;background:#5aa2e0;border-radius:4px 4px 0 0;height:62%"></div>
+      <div title="Aug 15 — $0.0022" style="flex:1;background:#5aa2e0;border-radius:4px 4px 0 0;height:100%"></div>
+    </div>
+    <div style="display:flex;gap:6px;color:var(--ink3);font-size:11px;margin-top:6px">
+      <div style="flex:1;text-align:center">09</div><div style="flex:1;text-align:center">10</div><div style="flex:1;text-align:center">11</div><div style="flex:1;text-align:center">12</div><div style="flex:1;text-align:center">13</div><div style="flex:1;text-align:center">14</div><div style="flex:1;text-align:center">15</div>
+    </div>
+  </div>
+  <div class="card"><h3>Advanced</h3>
+    <p class="dim" style="font-size:13px">Download JSON / CSV · cost method · Claude-invoice compare · tier mix · provider attribution — all one click here, none shouting on the overview.</p>
+  </div>
+</section>
+
+<!-- ── GUARDS ── -->
+<section class="view" id="v-guards">
+  <h2>Guards</h2>
+  <p class="sub">326 events in window · 0 violations · quiet means no fire, not no coverage.</p>
+  <div class="card">
+    <table>
+      <thead><tr><th>Guard</th><th class="num">Events</th><th>Last outcome</th></tr></thead>
+      <tbody>
+        <tr><td>secret-scan (commit gate)</td><td class="num">184</td><td><span style="color:var(--good)">pass</span></td></tr>
+        <tr><td>CVE check</td><td class="num">96</td><td><span style="color:var(--good)">pass</span></td></tr>
+        <tr><td>db-guard</td><td class="num">31</td><td><span style="color:var(--good)">pass</span></td></tr>
+        <tr><td>push-gate (advisory)</td><td class="num">15</td><td class="dim">reminder shown</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<script>
+const views=document.querySelectorAll('.view'),navs=document.querySelectorAll('.nav');
+navs.forEach(n=>n.onclick=()=>{
+  navs.forEach(x=>x.classList.remove('on'));n.classList.add('on');
+  views.forEach(v=>v.classList.remove('on'));
+  document.getElementById('v-'+n.dataset.v).classList.add('on');
+});
+function setTree(p){document.getElementById('treeIF').src=p;document.getElementById('treeOpen').href=p;}
+function goTree(p){if(!p)return;setTree(p);
+  const sel=document.getElementById('treeSel');[...sel.options].forEach(o=>{if(o.value===p)sel.value=p;});
+  navs.forEach(x=>x.classList.remove('on'));document.querySelector('[data-v=tree]').classList.add('on');
+  views.forEach(v=>v.classList.remove('on'));document.getElementById('v-tree').classList.add('on');}
+function filt(){const on=document.getElementById('f30').checked;
+  document.querySelectorAll('#repoTbl tbody tr').forEach(r=>r.style.display=(on&&r.dataset.a==='0')?'none':'');}
+filt();
+</script>
+</body></html>

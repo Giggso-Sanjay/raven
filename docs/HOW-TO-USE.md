@@ -491,7 +491,7 @@ Raven wires 9 hooks into Claude Code's lifecycle via `.claude/settings.json`. Th
 
 | Event | Hook | Blocks? | What it does |
 |---|---|---|---|
-| `SessionStart` | `session-start.py` + `vault-load.py` | No | Brownfield/greenfield · models · **RavenVault agent memory digest** (hub, open questions, last sessions) |
+| `SessionStart` | `session-start.py` only | No | Brownfield/greenfield · models. **No vault-load.** Agent first load: `ide-boot.py` (`load=1` → `.raven/memory/CARD.md`) |
 | `UserPromptSubmit` | `cve-prompt-guard.py` | No | Detects install intent → injects CVE reminder before Claude responds |
 | `PreToolUse` any | `tool-guard.py` | **Yes** | Blocks restricted actions (rm -rf, sudo, etc.) |
 | `PreToolUse` Bash | `schema-guard.py` | **Yes** | Stops DROP TABLE / TRUNCATE / DELETE without WHERE before it runs |
@@ -503,7 +503,7 @@ Raven wires 9 hooks into Claude Code's lifecycle via `.claude/settings.json`. Th
 | `Stop` | `knowledge-extract.py` | No (async) | Fail-soft concepts/decisions into vault |
 
 **INTEGRITY hooks** (schema-guard, tool-guard, pre-commit) block before execution.
-**CONTEXT hooks** (session-start, vault-load, secret-scan warn, cve-prompt, writers) inform asynchronously — no adoption friction.
+**CONTEXT hooks** (session-start, secret-scan warn, cve-prompt, writers) inform asynchronously — no adoption friction. Vault digest is **not** injected; use `ide-boot.py`.
 
 **RavenVault graph & memory (how to use):** see [RAVENVAULT-GRAPH-AND-MEMORY.md](./RAVENVAULT-GRAPH-AND-MEMORY.md).  
 Dashboard: `python3 scripts/dashboard.py --html --open` → `~/RavenVault/dashboard.html`.
@@ -538,7 +538,7 @@ The pre-commit hook (separate from Claude Code hooks) adds: manifest check · se
 
 ### How sessions work
 
-Every session starts with Andie automatically — this is enforced via `AGENTS.md` and the plugin's `systemPrompt`:
+Every session starts with Andie automatically — this is enforced via `AGENTS.md` (Codex/Grok/Cursor) and the plugin's `systemPrompt` if present. First memory load is `python3 scripts/memory/ide-boot.py` (`load=1` → Read the card only).
 
 ```
 Step 1: Andie loads

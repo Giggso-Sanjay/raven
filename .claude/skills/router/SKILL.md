@@ -13,7 +13,9 @@ Run the matching command and relay its printed output to the user verbatim:
 
 ## What to tell the user (keep it honest)
 
-- Router ON means: prompts Raven classifies as SIMPLE arrive with an advisory note asking Claude to consider delegating to a Haiku subagent via the Agent tool — only when the question is fully self-contained (no conversation context, no file reads, no tool calls needed).
-- The primary session model NEVER changes. Claude Code has no per-turn model swap; the session model is set only via `/model`. Never claim the router reroutes the main conversation.
-- Router OFF (the default) means: no delegation nudges, everything runs on the session's default model. The secrets guard (LOCAL_ONLY warning) stays active either way.
-- The mode persists in `.raven/.router-state.json` until toggled again.
+- **Default ON.** SessionStart runs `model-router.py --session-start` and arms base routing every session.
+- SIMPLE + self-contained → Claude **must** spawn a Haiku Agent and return that answer. Context-bound SIMPLE stays on the session model (one-line why).
+- The primary session model NEVER changes. Claude Code has no per-turn model swap (`/model` only). LiteLLM is not wired yet — do not claim it is.
+- `/router off` opts out until the **next** SessionStart, which turns it ON again.
+- LOCAL_ONLY (secrets) still blocks cloud subagents either way.
+- State: `.raven/.router-state.json`.

@@ -1,1 +1,1 @@
-../../scripts/token-meter-write.py
+../../scripts/session/token-meter-write.py

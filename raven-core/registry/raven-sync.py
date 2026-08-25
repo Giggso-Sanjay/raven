@@ -28,21 +28,30 @@ REGISTRY_FILE  = REGISTRY_DIR / "registry.json"
 REGISTRY_REPO  = "https://github.com/giggsoinc/raven-registry.git"
 REGISTRY_CLONE = REGISTRY_DIR / "remote"
 CORE_DIR       = Path(__file__).parent.parent
+REPO_ROOT      = CORE_DIR.parent
 VERSION_FILE   = CORE_DIR / "VERSION"
 SKILLS_DIR     = Path.home() / ".claude" / "skills"
+SYNC_MANIFEST  = Path(__file__).parent / "sync-manifest.json"
 
-ENGINE_SCRIPTS = [
-    "cve-check.py",
-    "secret-scan.py",
-    "audit-log.py",
-    "emit-violation.py",
-]
 
-SKILLS_TO_SYNC = [
-    "andie",
-    "andie-jr",
-    "tools-landscape",
-]
+def load_sync_manifest():
+    """Data-driven list of what gets synced — edit sync-manifest.json, not this file."""
+    if SYNC_MANIFEST.exists():
+        m = json.loads(SYNC_MANIFEST.read_text())
+        return (
+            m.get("engine_scripts", []),
+            m.get("skills", []),
+            m.get("dashboard_files", []),
+        )
+    print(f"⚠️  {SYNC_MANIFEST} not found — falling back to built-in defaults")
+    return (
+        ["cve-check.py", "secret-scan.py", "audit-log.py", "emit-violation.py"],
+        ["andie", "andie-jr", "tools-landscape"],
+        [],
+    )
+
+
+ENGINE_SCRIPTS, SKILLS_TO_SYNC, DASHBOARD_FILES = load_sync_manifest()
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -168,15 +177,29 @@ def sync_project(project, current_version, dry_run=False):
     else:
         print(f"    ⚠️  .claude/skills not found — skills not updated")
 
-    # 4. Version stamp
+    # 4. Dashboard subsystem files (paths relative to repo root, e.g. "scripts/dashboard/core.py")
+    for rel_path in DASHBOARD_FILES:
+        src = REPO_ROOT / rel_path
+        dest = Path(path) / rel_path
+        if src.exists():
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy(src, dest)
+            print(f"    ✅ {rel_path}")
+        else:
+            print(f"    ⚠️  {rel_path} not found in raven-core repo — skipped")
+
+    # 5. Version stamp
     write_version_stamp(path, current_version)
     print(f"    ✅ .raven/raven_version → {current_version}")
 
-    # 5. Git commit + push
+    # 6. Git commit + push
     has_remote = bool(project.get("remote"))
     staged = git_run(["status", "--short"], cwd=path)
     if staged.stdout.strip():
-        git_run(["add", ".claude/", ".raven/raven_version"], cwd=path)
+        add_paths = [".claude/", ".raven/raven_version"]
+        if DASHBOARD_FILES:
+            add_paths.append("scripts/")
+        git_run(["add"] + add_paths, cwd=path)
         git_run([
             "commit", "-m",
             f"chore(raven): sync to v{current_version} — scripts · skills · Andie compact"

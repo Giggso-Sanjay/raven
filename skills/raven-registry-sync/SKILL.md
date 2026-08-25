@@ -31,12 +31,18 @@ Syncs all registered Raven projects to the current engine version.
 
 ## Steps
 
-1. **Locate raven-core**
+1. **Locate raven-core** (checked in order — first hit wins)
    ```bash
-   RAVEN_CORE=~/projects/raven-core
+   for candidate in "${RAVEN_CORE_PATH:-}" "./raven-core" "$(pwd)/raven-core" ~/projects/raven-core; do
+     if [ -n "$candidate" ] && [ -f "$candidate/registry/raven-sync.py" ]; then
+       RAVEN_CORE="$candidate"
+       break
+     fi
+   done
    SYNC_SCRIPT="$RAVEN_CORE/registry/raven-sync.py"
    ```
-   If not found → STOP with: "raven-core not found at expected path. Check ~/projects/raven-core"
+   Set `RAVEN_CORE_PATH` env var to override on unusual layouts.
+   If none found → STOP with: "raven-core not found — checked \$RAVEN_CORE_PATH, ./raven-core, ~/projects/raven-core"
 
 2. **Run the sync script** with the flags passed by the user:
    ```bash

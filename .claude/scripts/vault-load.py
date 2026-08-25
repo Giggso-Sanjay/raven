@@ -1,1 +1,1 @@
-../../scripts/vault-load.py
+../../scripts/memory/vault-load.py

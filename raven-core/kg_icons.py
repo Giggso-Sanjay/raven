@@ -1,1 +1,1 @@
-../scripts/kg_icons.py
+../scripts/dashboard/icons.py

@@ -1,1 +1,1 @@
-../scripts/vault_common.py
+../scripts/memory/vault_common.py
