@@ -37,7 +37,7 @@
       ],
       "owner": "raven-core-team",
       "status": "active",
-      "purpose": "3-phase browser testing skill. Generates UI\u00c2\u00b7UX\u00c2\u00b7Data\u00c2\u00b7Security\u00c2\u00b7Correctness\u00c2\u00b7Speed test cases, drives visible Chrome live, writes Raven-compatible blocker MDs. Human watches and guides throughout. An",
+      "purpose": "3-phase browser testing skill. Generates UI\u00b7UX\u00b7Data\u00b7Security\u00b7Correctness\u00b7Speed test cases, drives visible Chrome live, writes Raven-compatible blocker MDs. Human watches and guides throughout. Andie p",
       "domain": "andie",
       "layering": "Browser-testing arm with andie packed inside; no external skill calls."
     },
@@ -117,7 +117,7 @@
       ],
       "owner": "raven-core-team",
       "status": "active",
-      "purpose": "Universal database orchestrator. Use for ANY database question \u00e2\u20ac\u201d schema",
+      "purpose": "Universal database orchestrator. Use for ANY database question \u2014 schema",
       "domain": "db",
       "layering": "Universal DB orchestrator; loads per-DB sub-skills (postgres, oracle-db, graph-db, vector-db, redis)."
     },
@@ -146,7 +146,7 @@
       ],
       "owner": "raven-core-team",
       "status": "active",
-      "purpose": "Use for any FastAPI question. Assumes Sebasti\u00c3\u00a1n Ram\u00c3\u00adrez (FastAPI creator) persona. Deep multi-dimensional analysis. Bullets not prose."
+      "purpose": "Use for any FastAPI question. Assumes Sebasti\u00e1n Ram\u00edrez (FastAPI creator) persona. Deep multi-dimensional analysis. Bullets not prose."
     },
     "gcp-specialist": {
       "name": "gcp-specialist",
@@ -164,7 +164,7 @@
       ],
       "owner": "raven-core-team",
       "status": "active",
-      "purpose": "Use for graph database design, querying, and deployment. Sub-modes \u00e2\u20ac\u201d falkordb \u00c2\u00b7 neo4j \u00c2\u00b7 property-graph. Assumes Jim Webber (Neo4j co-author) persona. Bullets not prose.",
+      "purpose": "Use for graph database design, querying, and deployment. Sub-modes \u2014 falkordb \u00b7 neo4j \u00b7 property-graph. Assumes Jim Webber (Neo4j co-author) persona. Bullets not prose.",
       "domain": "db",
       "layering": "Leaf specialist under db-specialist routing."
     },
@@ -202,7 +202,7 @@
       ],
       "owner": "raven-core-team",
       "status": "active",
-      "purpose": "Use for ML pipelines, feature stores, experiment tracking, and ML operations. Sub-modes \u00e2\u20ac\u201d pipelines \u00c2\u00b7 feature-stores \u00c2\u00b7 experiment-tracking. Assumes Chip Huyen (ML systems author) persona. Bullets "
+      "purpose": "Use for ML pipelines, feature stores, experiment tracking, and ML operations. Sub-modes \u2014 pipelines \u00b7 feature-stores \u00b7 experiment-tracking. Assumes Chip Huyen (ML systems author) persona. Bullets not "
     },
     "ml-specialist": {
       "name": "ml-specialist",
@@ -211,7 +211,7 @@
       ],
       "owner": "raven-core-team",
       "status": "active",
-      "purpose": "Use for ML model training, inference, serving, and deployment. Assumes Andrej Karpathy persona. Sub-modes \u00e2\u20ac\u201d training \u00c2\u00b7 inference \u00c2\u00b7 serving. Bullets not prose."
+      "purpose": "Use for ML model training, inference, serving, and deployment. Assumes Andrej Karpathy persona. Sub-modes \u2014 training \u00b7 inference \u00b7 serving. Bullets not prose."
     },
     "nicegui-specialist": {
       "name": "nicegui-specialist",
@@ -241,7 +241,7 @@
       ],
       "owner": "raven-core-team",
       "status": "active",
-      "purpose": "Use for any Odoo question \u00e2\u20ac\u201d module development, ORM, XML views, QWeb,"
+      "purpose": "Use for any Odoo question \u2014 module development, ORM, XML views, QWeb,"
     },
     "oracle-apex-specialist": {
       "name": "oracle-apex-specialist",
@@ -279,7 +279,7 @@
       ],
       "owner": "raven-core-team",
       "status": "active",
-      "purpose": "Oracle Fusion ERP \u00e2\u20ac\u201d Order to Cash, Procure to Pay, Record to Report, FBDI, BIP, OIC, REST APIs, OTBI, FRS, ADW. Trigger on: Oracle Fusion, Oracle ERP, O2C, P2P, R2R, FBDI, BIP reports, OIC integrati"
+      "purpose": "Oracle Fusion ERP \u2014 Order to Cash, Procure to Pay, Record to Report, FBDI, BIP, OIC, REST APIs, OTBI, FRS, ADW. Trigger on: Oracle Fusion, Oracle ERP, O2C, P2P, R2R, FBDI, BIP reports, OIC integration"
     },
     "oracle-graal-specialist": {
       "name": "oracle-graal-specialist",
@@ -288,7 +288,7 @@
       ],
       "owner": "raven-core-team",
       "status": "active",
-      "purpose": "GraalVM Native Image \u00e2\u20ac\u201d builds, configuration, reachability metadata, and troubleshooting. Trigger on: native-image, GraalVM, native-maven-plugin, org.graalvm.buildtools.native, reachability metadata"
+      "purpose": "GraalVM Native Image \u2014 builds, configuration, reachability metadata, and troubleshooting. Trigger on: native-image, GraalVM, native-maven-plugin, org.graalvm.buildtools.native, reachability metadata, "
     },
     "oracle-oci-specialist": {
       "name": "oracle-oci-specialist",
@@ -297,7 +297,7 @@
       ],
       "owner": "raven-core-team",
       "status": "active",
-      "purpose": "Oracle Cloud Infrastructure \u00e2\u20ac\u201d compute, networking, storage, databases, security, DevOps pipelines, Container Engine (OKE), Functions, Streaming, AI services. Trigger on: OCI, Oracle Cloud, OKE, OCI ",
+      "purpose": "Oracle Cloud Infrastructure \u2014 compute, networking, storage, databases, security, DevOps pipelines, Container Engine (OKE), Functions, Streaming, AI services. Trigger on: OCI, Oracle Cloud, OKE, OCI Co",
       "domain": "oci",
       "layering": "Canonical OCI skill within the oracle-* suite."
     },
@@ -364,7 +364,7 @@
       ],
       "owner": "raven-core-team",
       "status": "active",
-      "purpose": "Use when deep expertise is needed \u00e2\u20ac\u201d complex architecture decisions,"
+      "purpose": "Use when deep expertise is needed \u2014 complex architecture decisions,"
     },
     "raven-harden": {
       "name": "raven-harden",
@@ -391,7 +391,7 @@
       ],
       "owner": "raven-core-team",
       "status": "active",
-      "purpose": "Initialize Raven for a new project. Andie-conversational \u00e2\u20ac\u201d auto-scans project, asks at most 2 questions, generates manifest.json, validates, and commits with audit trail."
+      "purpose": "Initialize Raven for a new project. Andie-conversational \u2014 auto-scans project, asks at most 2 questions, generates manifest.json, validates, and commits with audit trail."
     },
     "raven-plan": {
       "name": "raven-plan",
@@ -481,7 +481,7 @@
       ],
       "owner": "raven-core-team",
       "status": "active",
-      "purpose": "Use when writing or reviewing tests. Forces test-first discipline \u00e2\u20ac\u201d"
+      "purpose": "Use when writing or reviewing tests. Forces test-first discipline \u2014"
     },
     "redis-specialist": {
       "name": "redis-specialist",
@@ -494,15 +494,6 @@
       "domain": "db",
       "layering": "Leaf specialist under db-specialist routing."
     },
-    "router": {
-      "name": "router",
-      "paths": [
-        "skills/router"
-      ],
-      "owner": "raven-core-team",
-      "status": "active",
-      "purpose": "Toggle the Raven model router. /router enables advisory Haiku-subagent delegation for simple prompts, /router off disables it, /router status shows the current mode. The primary session model is never"
-    },
     "salesforce-specialist": {
       "name": "salesforce-specialist",
       "paths": [
@@ -510,7 +501,7 @@
       ],
       "owner": "raven-core-team",
       "status": "active",
-      "purpose": "Use for any Salesforce question \u00e2\u20ac\u201d Apex, SOQL, LWC, Flows, integrations,"
+      "purpose": "Use for any Salesforce question \u2014 Apex, SOQL, LWC, Flows, integrations,"
     },
     "security-specialist": {
       "name": "security-specialist",
@@ -555,7 +546,7 @@
       ],
       "owner": "raven-core-team",
       "status": "active",
-      "purpose": "Thin UI/UX and frontend router. Detects framework (React, Vue, Angular, JavaScript) and design intent. Routes to the right specialist. Design default is v0.dev or AI canvas tool \u00e2\u20ac\u201d Figma ONLY when us"
+      "purpose": "Thin UI/UX and frontend router. Detects framework (React, Vue, Angular, JavaScript) and design intent. Routes to the right specialist. Design default is v0.dev or AI canvas tool \u2014 Figma ONLY when user"
     },
     "vault-specialist": {
       "name": "vault-specialist",
@@ -584,7 +575,16 @@
       ],
       "owner": "raven-core-team",
       "status": "active",
-      "purpose": "Use for workflow orchestration, deterministic flows, and pipeline design. Sub-modes \u00e2\u20ac\u201d event-driven \u00c2\u00b7 dag-based \u00c2\u00b7 durable-execution. Assumes Ben Stopford (Confluent, distributed systems) persona. B"
+      "purpose": "Use for workflow orchestration, deterministic flows, and pipeline design. Sub-modes \u2014 event-driven \u00b7 dag-based \u00b7 durable-execution. Assumes Ben Stopford (Confluent, distributed systems) persona. Bulle"
+    },
+    "router": {
+      "name": "router",
+      "paths": [
+        ".claude/skills/router"
+      ],
+      "owner": "raven-core-team",
+      "status": "active",
+      "purpose": "Toggle the Raven model router. /router enables advisory Haiku-subagent delegation for simple prompts, /router off disables it, /router status shows the current mode. The primary session model is never"
     }
   }
 }

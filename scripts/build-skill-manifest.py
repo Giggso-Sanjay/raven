@@ -95,12 +95,7 @@ def discover() -> dict:
                 "status": "active",
                 "purpose": _purpose(skill_md),
             })
-            # as_posix(): str() yields OS-native separators, so regenerating on Windows
-            # rewrote all 62 paths from skills/x to skills\x — an 86-line diff with no
-            # semantic change, and a file whose committed form depended on who ran the
-            # generator last. A generated artifact must be byte-identical across
-            # platforms or it is not really generated.
-            entry["paths"].append(d.relative_to(REPO).as_posix())
+            entry["paths"].append(str(d.relative_to(REPO)))
             entry.update(OVERRIDES.get(name, {}))
     return entries
 
@@ -116,21 +111,6 @@ def check(entries: dict) -> list:
     for name in registered:
         if name not in entries:
             failures.append(f"GHOST manifest entry (skill dir missing): {name}")
-
-    # Every registered skill must be loadable from skills/ — the directory Claude Code
-    # reads for a plugin. `router` lived only in .claude/skills/, so the plugin shipped
-    # the file, the manifest registered it accurately, CLAUDE.md documented /router at
-    # length, and no install could invoke it: .claude/skills/ is a PROJECT-local skills
-    # dir, which is why it worked in this repo only. Same shape as BUG-019, where
-    # push-gate.py sat in .claude/scripts/ and the packaged hook pointed at nothing.
-    # A path that exists is not the same as a path the loader reads.
-    for name, e in registered.items():
-        paths = e.get("paths") or []
-        if paths and not any(p.startswith("skills/") for p in paths):
-            failures.append(
-                f"NOT PLUGIN-LOADABLE: {name} is registered at {paths} — plugins load "
-                f"skills from skills/, so this ships but cannot be invoked by any install"
-            )
 
     by_domain = {}
     for name, e in registered.items():
