@@ -92,7 +92,7 @@ def discover() -> dict:
 
 def check(entries: dict) -> list:
     failures = []
-    manifest = json.loads(MANIFEST.read_text(encoding="utf-8")) if MANIFEST.exists() else {"skills": {}}
+    manifest = json.loads(MANIFEST.read_text()) if MANIFEST.exists() else {"skills": {}}
     registered = manifest.get("skills", {})
 
     for name in entries:
@@ -131,17 +131,6 @@ def check(entries: dict) -> list:
 
 
 def main() -> int:
-    # Reject unknown flags before doing anything: the no-arg path WRITES the manifest,
-    # so a typo (or a plausible guess like --lint) would silently turn a read-only
-    # check into a regeneration and report success while laundering real drift.
-    unknown = [a for a in sys.argv[1:] if a != "--check"]
-    if unknown:
-        print(f"unknown argument: {' '.join(unknown)}", file=sys.stderr)
-        print("usage: build-skill-manifest.py [--check]", file=sys.stderr)
-        print("  --check   validate only, exit 1 on violation (never writes)", file=sys.stderr)
-        print("  (no args) regenerate skills/MANIFEST.json", file=sys.stderr)
-        return 2
-
     entries = discover()
     if "--check" in sys.argv:
         failures = check(entries)

@@ -85,8 +85,7 @@ These are the **real Claude Code hooks** wired in this project. `PostEdit` and `
 | Hook Event | Fires When | Action |
 |---|---|---|
 | `SessionStart` | New Claude session opens | `session-start.py` + `vault-load.py` digest |
-| `UserPromptSubmit` | Every user message arrives | `triage-router.py` → `architect-router.py` → `model-router.py` → `cve-prompt-guard.py` → `push-approve.py` (parses approvals, sole cleaner of `.push-approved`) |
-| `PreToolUse` (matcher: `Write\|Edit\|MultiEdit\|NotebookEdit\|Bash`) | Before any mutating tool call | `push-gate.py` — Educated Push **advisory**: one-time `systemMessage` reminder on the first mutating action of a session, then silent. Always returns `allow`; there is no deny path |
+| `UserPromptSubmit` | Every user message arrives | `triage-router.py` → `architect-router.py` → `model-router.py` → `cve-prompt-guard.py` |
 | `PostToolUse` (matcher: `Write\|Edit\|MultiEdit`) | After any file write/edit | `secret-scan.py` + `db-guard.py` (async) |
 | `Stop` | Session ends | `token-guard.py` + `obsidian-log.py` (hub + trimmed session) + `knowledge-extract.py` (async) |
 

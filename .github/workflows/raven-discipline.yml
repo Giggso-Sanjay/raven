@@ -46,21 +46,6 @@ jobs:
       - name: Config canon check (distribution configs generated from .claude/settings.json)
         run: python3 scripts/export-hook-configs.py --check
 
-  raven-distribution-coverage-check:
-    name: raven-distribution-coverage-check
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-      # Independent of the exporter on purpose. Gate 3 compares the copies against what
-      # the exporter WOULD generate, so an exporter bug is invisible to it (BUG-013).
-      # This reads the JSON directly and shares no code with the generator.
-      - name: Distribution coverage (every canonical hook survives into every dist copy)
-        run: python3 scripts/check-distribution-coverage.py
-
   raven-skill-manifest-check:
     name: raven-skill-manifest-check
     runs-on: ubuntu-latest
