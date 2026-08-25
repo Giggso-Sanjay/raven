@@ -48,27 +48,13 @@ After any non-trivial action, end with what changed and what's next. No silent c
 
 ---
 
-## ✋ Educated Push Contract — ADVISORY by default, enforced on request
+## ✋ Educated Push Contract — ADVISORY (educational, never blocking)
 
-Two modes, chosen per session. **Advisory is the default** — the 2026-08-07
-decision ("educated is educational — it should not block") governs every session
-that has not explicitly opted in.
-
-| Mode | How to set | Behaviour |
-|---|---|---|
-| **auto / unset** (default) | nothing to do | `push-gate.py` shows a one-time reminder on the first mutating action, then stays silent. **Never denies.** |
-| **guided** (opt-in) | say `guided` | Mutations are **denied** until you reply `go ahead` / `approved` / `GO` / `proceed`. Approval expires after 1 hour. Say `auto` to leave. |
-
-Guided mode carries a **self-exemption** so it can never lock you out of
-repairing it — `.raven/` paths, `push-gate.py` / `push-approve.py`, Bash commands
-touching those scripts or carrying `--status` / `--reset`, and all read-only Bash
-always pass. Those were exactly the bugs that forced `c8c5c2e` to be reverted
-(it denied its own diagnostics, counted `2>/dev/null` as a write, and blocked the
-Edit needed to fix itself).
-
-Markers live in `.raven/` (`.push-notice-shown`, `.push-mode`, `.push-approved`,
-`.model-disclosed`) and are cleared by `push-gate.py --reset`, which SessionStart
-calls — one reset entry point using one root resolver.
+Every change cycle should follow this loop. It is **taught, not enforced**:
+`push-gate.py` (PreToolUse) shows a one-time reminder on the first mutating
+action of each session, then allows everything. It never denies a tool call
+(user decision 2026-08-07: "educated is educational — it should not block").
+The one-time marker is `.raven/.push-notice-shown`, wiped at SessionStart.
 
 The loop Claude is expected to follow for non-trivial changes:
 

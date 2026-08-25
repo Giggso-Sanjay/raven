@@ -139,15 +139,7 @@ def _detect_secrets(context: str) -> bool:
 
 
 def _find_project_root() -> Path:
-    """CLAUDE_PROJECT_DIR if set, else walk up from cwd to the nearest .git.
-
-    Honouring the env var first matches push-gate.py and keeps hook state in the
-    project Claude Code is actually operating on, even when the hook subprocess
-    inherits an unrelated cwd (the BUG-022 class).
-    """
-    env_root = os.environ.get("CLAUDE_PROJECT_DIR")
-    if env_root and Path(env_root).is_dir():
-        return Path(env_root)
+    """Walk up from cwd to the nearest .git directory. Falls back to cwd."""
     d = Path.cwd()
     for candidate in [d, *d.parents]:
         if (candidate / ".git").is_dir():
@@ -333,31 +325,8 @@ def write_session_json(tier: str, score: int, reasons: List[str], model: str, pr
 ROUTER_STATE_FILE = ".router-state.json"
 
 
-DISCLOSURE_MARKER_FILE = ".model-disclosed"
-
-
 def _router_state_path() -> Path:
     return _find_project_root() / ".raven" / ROUTER_STATE_FILE
-
-
-def _disclosure_marker() -> Path:
-    """Once-per-session marker for the model disclosure (BUG-021).
-
-    Wiped by push-gate.py --reset at SessionStart, alongside the Educated Push
-    flags. File existence is the gate — session_id is not stable enough to key on.
-    """
-    return _find_project_root() / ".raven" / DISCLOSURE_MARKER_FILE
-
-
-def _write_disclosure_marker() -> None:
-    try:
-        p = _disclosure_marker()
-        p.parent.mkdir(parents=True, exist_ok=True)
-        p.write_text("shown\n", encoding="utf-8")
-    except OSError as e:
-        # Fail soft: a hook that cannot write a marker must not block the prompt.
-        # Worst case the disclosure repeats — never a non-zero exit here.
-        print(f"Warning: failed to write disclosure marker: {e}", file=sys.stderr)
 
 
 def load_router_state() -> Dict:
@@ -486,21 +455,12 @@ def main():
         state = load_router_state()
         router_on = state.get("mode") == "router"
 
-        # Once per session: disclose the session model and offer the router,
-        # instead of silently classifying. The hook cannot see which model the
-        # session runs on (Claude Code doesn't expose it here) — but Claude
-        # knows its own model, so the disclosure is delegated to Claude via
-        # additionalContext.
-        #
-        # Gated on a SessionStart-wiped MARKER FILE, not on session_id equality
-        # (BUG-021). The id proved unstable — two different values were observed
-        # minutes apart inside one session — so "id differs from stored" was true
-        # every turn and the disclosure repeated on every prompt. The marker is
-        # the same mechanism .push-notice-shown uses, which demonstrably holds:
-        # SessionStart clears it, so "once per session" means once per session
-        # regardless of what the host does with ids.
-        if not _disclosure_marker().exists():
-            _write_disclosure_marker()
+        # First prompt of a NEW session: disclose the session model and offer
+        # the router, instead of silently classifying. The hook cannot see
+        # which model the session runs on (Claude Code doesn't expose it here)
+        # — but Claude knows its own model, so the disclosure is delegated to
+        # Claude via additionalContext.
+        if hook_session_id and hook_session_id != state.get("session_id"):
             state["session_id"] = hook_session_id
             state["announced"] = True
             save_router_state(state)
