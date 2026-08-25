@@ -41,7 +41,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 \"${CLAUDE_PROJECT_DIR:-.}/.claude/scripts/push-gate.py\" 2>/dev/null || python3 \"${CLAUDE_PROJECT_DIR:-.}/scripts/push-gate.py\" 2>/dev/null || true",
+            "command": "python3 \"${CLAUDE_PROJECT_DIR:-.}/.claude/scripts/push-gate.py\"",
             "timeout": 5
           }
         ]

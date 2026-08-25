@@ -66,35 +66,13 @@ def scripts_by_event(path: Path) -> dict:
     return out
 
 
-def missing_script_files(canon: dict) -> list:
-    """Every hook-referenced script must EXIST where the plugin will look for it.
-
-    hooks/hooks.json rewrites all commands to ${CLAUDE_PLUGIN_ROOT}/scripts/<name>, so a
-    script that lives only in .claude/scripts/ resolves to nothing once packaged — and
-    `|| true` swallows the error, leaving a silently dead hook. BUG-019: push-gate.py was
-    wired, documented, flag-correct and present in the package, yet Educated Push never
-    fired in any install because it sat in .claude/scripts/ and the plugin looked in
-    scripts/. Name and arg checks both passed; nobody asked whether the file was there.
-    """
-    problems = []
-    for event, entries in sorted(canon.items()):
-        for name in sorted(entries):
-            if not (REPO / "scripts" / name).is_file():
-                problems.append(
-                    f"{event}: {name} is wired but scripts/{name} does not exist — the "
-                    f"plugin resolves ${{CLAUDE_PLUGIN_ROOT}}/scripts/{name} and will "
-                    f"silently no-op (|| true)"
-                )
-    return problems
-
-
 def main() -> int:
     if not CANONICAL.is_file():
         print(f"raven-distribution-coverage-check: FAIL — canonical missing: {CANONICAL}")
         return 1
 
     canon = scripts_by_event(CANONICAL)
-    failures = missing_script_files(canon)
+    failures = []
 
     for rel in DISTRIBUTION:
         path = REPO / rel

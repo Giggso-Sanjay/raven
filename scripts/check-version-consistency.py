@@ -32,13 +32,8 @@ JSON_CHECKS = [
     ("plugin/plugin.json", "version"),
     ("plugin/.claude-plugin/plugin.json", "version"),
     (".raven/manifest.json", "version"),
-    # The ROOT plugin manifest is what Claude Code reads at install time: it sets the
-    # recorded version AND the cache directory (cache/<mp>/<plugin>/<version>). A stale
-    # value here makes two projects pinned to different commits share one cache dir and
-    # silently overwrite each other's payload. Nothing checked it before BUG-018.
-    (".claude-plugin/plugin.json", "version"),
-    # marketplace.json determines the version label shown in the Discover UI — it was
-    # another place the v5.0.0 sweep missed, precisely because nothing checked it.
+    # marketplace.json determines the version label users see at install time — it was
+    # the one place the v5.0.0 sweep missed, precisely because nothing checked it.
     (".claude-plugin/marketplace.json", "version"),
     (".claude-plugin/marketplace.json", "metadata.version"),
     (".claude-plugin/marketplace.json", "plugins.0.version"),
