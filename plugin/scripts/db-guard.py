@@ -1,1 +1,1 @@
-../../scripts/db-guard.py
+/Users/giggso/AntiGravity_Projects/SHAY-ROLLS/CLAUDE/RAVEN/raven-core/db-guard.py

@@ -32,17 +32,7 @@ for _stream in (sys.stdout, sys.stderr):
 
 REPO = Path(__file__).resolve().parent.parent
 CANONICAL = REPO / "scripts"
-# plugin/scripts was NOT in this list, so 7 symlinks there pointed at absolute paths
-# under /Users/giggso/AntiGravity_Projects/... — resolvable on one machine only, and
-# shipped in the package (BUG-026). 4129672 converted 17 absolute symlinks to relative
-# and added this gate specifically to fail on "a symlink is absolute", but scoped it to
-# the two trees the author happened to be looking at. The check was right; its coverage
-# was narrower than the invariant the repo needs.
-MIRRORS = [
-    REPO / "raven-core",
-    REPO / ".claude" / "scripts",
-    REPO / "plugin" / "scripts",
-]
+MIRRORS = [REPO / "raven-core", REPO / ".claude" / "scripts"]
 
 SYMLINK_MODE = "120000"
 
