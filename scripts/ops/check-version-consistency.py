@@ -14,8 +14,14 @@ import re
 import sys
 from pathlib import Path
 
+for _s in (sys.stdout, sys.stderr):
+    try:
+        _s.reconfigure(encoding="utf-8", errors="replace")
+    except (AttributeError, ValueError):  # pragma: no cover
+        pass
+
 REPO = Path(__file__).resolve().parent.parent.parent
-CANON = (REPO / "raven-core" / "VERSION").read_text().strip()
+CANON = (REPO / "raven-core" / "VERSION").read_text(encoding="utf-8").strip()
 
 # (path, how to extract the claimed current version)
 CHECKS = [
@@ -42,7 +48,7 @@ def main() -> int:
         if not p.exists():
             failures.append(f"MISSING file with version claim: {rel}")
             continue
-        m = re.search(pattern, p.read_text(), re.MULTILINE)
+        m = re.search(pattern, p.read_text(encoding="utf-8"), re.MULTILINE)
         if not m:
             failures.append(f"NO current-version claim found in {rel} (pattern: {pattern})")
         elif m.group(1) != CANON:
@@ -53,7 +59,7 @@ def main() -> int:
         if not p.exists():
             continue  # manifest.json is per-install; plugin files must exist though
         try:
-            v = json.loads(p.read_text()).get(key, "")
+            v = json.loads(p.read_text(encoding="utf-8")).get(key, "")
         except Exception as e:
             failures.append(f"UNPARSEABLE {rel}: {e}")
             continue

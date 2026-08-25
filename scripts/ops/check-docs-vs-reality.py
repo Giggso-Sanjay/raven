@@ -13,7 +13,13 @@ import re
 import sys
 from pathlib import Path
 
-REPO = Path(__file__).resolve().parent.parent
+for _s in (sys.stdout, sys.stderr):
+    try:
+        _s.reconfigure(encoding="utf-8", errors="replace")
+    except (AttributeError, ValueError):  # pragma: no cover
+        pass
+
+REPO = Path(__file__).resolve().parent.parent.parent
 CLAUDE_MD = REPO / "CLAUDE.md"
 SETTINGS = REPO / ".claude" / "settings.json"
 
@@ -22,7 +28,7 @@ HOOK_EVENTS = ("SessionStart", "UserPromptSubmit", "PostToolUse", "Stop")
 
 def claimed_hooks() -> dict:
     """Parse CLAUDE.md's Hook Reality table: event -> set of script names."""
-    text = CLAUDE_MD.read_text()
+    text = CLAUDE_MD.read_text(encoding="utf-8")
     claims = {}
     for line in text.splitlines():
         if not line.strip().startswith("|"):
@@ -35,7 +41,7 @@ def claimed_hooks() -> dict:
 
 
 def actual_hooks() -> dict:
-    settings = json.loads(SETTINGS.read_text())
+    settings = json.loads(SETTINGS.read_text(encoding="utf-8"))
     actual = {}
     for event, groups in settings.get("hooks", {}).items():
         scripts = set()
