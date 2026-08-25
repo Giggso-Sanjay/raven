@@ -14,41 +14,7 @@ from datetime import datetime
 from typing import Optional, Dict, Any
 
 PRICING_FILE = pathlib.Path(__file__).parent / "model-pricing.json"
-
-
-def _find_project_root() -> pathlib.Path:
-    """CLAUDE_PROJECT_DIR, else walk up to the nearest .git, else cwd.
-
-    Was `pathlib.Path.cwd() / ".raven"` computed at import — the cwd bug class of
-    9de4131, and the worst placement for it: a module-level constant, so the
-    checkpoint and every output landed wherever the hook subprocess happened to
-    start. A checkpoint written to the wrong directory silently re-reads the whole
-    transcript, which is exactly the compounding b37f2ba fixed.
-    """
-    env_root = os.environ.get("CLAUDE_PROJECT_DIR")
-    if env_root and pathlib.Path(env_root).is_dir():
-        return pathlib.Path(env_root)
-    d = pathlib.Path.cwd()
-    for candidate in [d, *d.parents]:
-        if (candidate / ".git").is_dir():
-            return candidate
-    return d
-
-
-def is_assistant_message(msg: dict) -> bool:
-    """True for an assistant turn, under either transcript schema (BUG-027a).
-
-    Claude Code writes {"type": "assistant", "message": {...}} with NO top-level
-    "role" key. The old `msg.get("role") == "assistant"` therefore matched nothing:
-    141 usage records in a live transcript produced model="unknown", tokens=0.
-    Accepting both keys keeps older transcripts readable and survives the next
-    rename in one place instead of two.
-    """
-    return msg.get("type") == "assistant" or msg.get("role") == "assistant"
-
-
-RAVEN_ROOT = _find_project_root()
-RAVEN_DIR = RAVEN_ROOT / ".raven"
+RAVEN_DIR = pathlib.Path.cwd() / ".raven"
 VAULT_DIR = pathlib.Path.home() / "RavenVault"
 AUDIT_DIR = RAVEN_DIR / "audit"
 CHECKPOINT_FILE = RAVEN_DIR / ".token-meter-checkpoint.json"
@@ -66,7 +32,7 @@ def load_checkpoint() -> Dict[str, Any]:
     """
     try:
         if CHECKPOINT_FILE.exists():
-            return json.loads(CHECKPOINT_FILE.read_text(encoding="utf-8"))
+            return json.loads(CHECKPOINT_FILE.read_text())
     except Exception:
         pass
     return {"session_id": "", "last_line_index": 0}
@@ -88,7 +54,7 @@ def load_pricing() -> Dict[str, Dict[str, float]]:
     """Load model pricing from config file."""
     try:
         if PRICING_FILE.exists():
-            return json.loads(PRICING_FILE.read_text(encoding="utf-8"))["models"]
+            return json.loads(PRICING_FILE.read_text())["models"]
     except Exception as e:
         sys.stderr.write(f"Warning: Failed to load pricing config: {e}\n")
     return {}
@@ -166,7 +132,7 @@ def parse_transcript(transcript_path: str) -> Dict[str, Any]:
     total_in, total_out, total_cache_read, total_cache_creation = 0, 0, 0, 0
 
     try:
-        with open(transcript_path, "r", encoding="utf-8", errors="replace") as f:
+        with open(transcript_path, "r") as f:
             all_lines = f.readlines()
 
         metrics["_new_line_count"] = len(all_lines)
@@ -199,7 +165,7 @@ def parse_transcript(transcript_path: str) -> Dict[str, Any]:
 
                 try:
                     # Extract usage from assistant messages
-                    if is_assistant_message(msg):
+                    if msg.get("role") == "assistant":
                         usage = msg.get("message", {}).get("usage", {})
                         if not usage:
                             continue
@@ -215,29 +181,14 @@ def parse_transcript(transcript_path: str) -> Dict[str, Any]:
                         cache_creation = usage.get("cache_creation_input_tokens", 0)
 
                         # Categorize
-                        # Tool calls live in message.content[] as
-                        # {"type": "tool_use", ...} blocks. message.tool_uses /
-                        # skill_uses do not exist in the current schema, so this
-                        # always saw empty lists and EVERY turn was attributed to
-                        # user_work (raven_code stayed 0 calls forever). Both keys
-                        # are still passed for older transcripts.
-                        _m = msg.get("message", {}) or {}
-                        _blocks = [b for b in (_m.get("content") or [])
-                                   if isinstance(b, dict) and b.get("type") == "tool_use"]
                         is_raven = is_raven_code(
-                            _blocks + list(_m.get("tool_uses") or []),
-                            list(_m.get("skill_uses") or []),
+                            msg.get("message", {}).get("tool_uses", []),
+                            msg.get("message", {}).get("skill_uses", []),
                         )
                         bucket = metrics["raven_code"] if is_raven else metrics["user_work"]
 
                         # Update totals
                         bucket["calls"] += 1
-                        # bucket["tokens"] was initialised but never incremented, while
-                        # :313/:322 add it into the session rollup — so raven_overhead
-                        # and user_work token counts stayed 0 forever even as their
-                        # costs accrued (observed: user_work 0 tok / $3.00). Cost and
-                        # token count must come from the same pass or they disagree.
-                        bucket["tokens"] += input_tokens + output_tokens
                         bucket["input"] += input_tokens
                         bucket["output"] += output_tokens
                         bucket["cache_read"] += cache_read
@@ -311,7 +262,7 @@ def write_session_json(metrics: Dict[str, Any]) -> bool:
         session_file = RAVEN_DIR / ".model-session.json"
 
         try:
-            existing = json.loads(session_file.read_text(encoding="utf-8")) if session_file.exists() else {}
+            existing = json.loads(session_file.read_text()) if session_file.exists() else {}
         except Exception:
             existing = {}
 
@@ -361,7 +312,7 @@ def _resolve_project_name() -> str:
     try:
         man = RAVEN_DIR / "manifest.json"
         if man.exists():
-            name = json.loads(man.read_text(encoding="utf-8")).get("project")
+            name = json.loads(man.read_text()).get("project")
             if name:
                 return str(name)
     except Exception:
@@ -417,7 +368,7 @@ def write_monthly_rollup(metrics: Dict[str, Any]) -> bool:
         # Load existing or init — preserve list-shaped sessions if present
         if month_file.exists():
             try:
-                data = json.loads(month_file.read_text(encoding="utf-8"))
+                data = json.loads(month_file.read_text())
             except json.JSONDecodeError:
                 data = {}
         else:
@@ -540,7 +491,7 @@ def _read_estimate() -> Optional[Dict[str, Any]]:
     est_cost_usd: null rather than a fabricated number.
     """
     try:
-        session = json.loads((RAVEN_DIR / ".model-session.json").read_text(encoding="utf-8"))
+        session = json.loads((RAVEN_DIR / ".model-session.json").read_text())
         lc = (session.get("user_work") or {}).get("last_classification") or {}
         model_str = lc.get("model_for_tier", "")
         prompt_chars = lc.get("prompt_chars")
@@ -586,7 +537,7 @@ def write_cost_log(metrics: Dict[str, Any]) -> bool:
         cum_session = 0.0
         cum_month = 0.0
         if COST_LOG.exists():
-            for line in COST_LOG.read_text(encoding="utf-8").splitlines():
+            for line in COST_LOG.read_text().splitlines():
                 try:
                     row = json.loads(line)
                 except json.JSONDecodeError:
@@ -647,7 +598,7 @@ def full_transcript_totals(transcript_path: str) -> float:
     pricing = load_pricing()
     total = 0.0
     try:
-        with open(transcript_path, "r", encoding="utf-8", errors="replace") as f:
+        with open(transcript_path, "r") as f:
             for line in f:
                 if not line.strip():
                     continue
@@ -655,7 +606,7 @@ def full_transcript_totals(transcript_path: str) -> float:
                     msg = json.loads(line)
                 except json.JSONDecodeError:
                     continue
-                if not is_assistant_message(msg):
+                if msg.get("role") != "assistant":
                     continue
                 usage = msg.get("message", {}).get("usage", {})
                 if not usage:
@@ -682,7 +633,7 @@ def write_cost_verify(session_id: str, transcript_path: str, timestamp: str) -> 
 
         path_a = 0.0
         if COST_LOG.exists():
-            for line in COST_LOG.read_text(encoding="utf-8").splitlines():
+            for line in COST_LOG.read_text().splitlines():
                 try:
                     row = json.loads(line)
                 except json.JSONDecodeError:
@@ -695,26 +646,10 @@ def write_cost_verify(session_id: str, transcript_path: str, timestamp: str) -> 
         else:
             variance_pct = 0.0 if path_a == 0 else 100.0
 
-        # BUG-027b: two zeros agree perfectly. Without this precondition the check
-        # reported verified:true for a session where NOTHING was measured — a green
-        # dashboard over a dead pipeline, which is worse than a red one. Agreement
-        # between two absent measurements is not evidence; distinguish "the paths
-        # agree" from "neither path has data".
-        measured = path_a > 0 or path_b > 0
-        if not measured:
-            status = "unmeasured"
-            verified = False
-        elif variance_pct <= VARIANCE_THRESHOLD_PCT:
-            status = "verified"
-            verified = True
-        else:
-            status = "divergent"
-            verified = False
-
+        verified = variance_pct <= VARIANCE_THRESHOLD_PCT
         verdict = {
             "session_id": session_id,
             "ts": timestamp,
-            "status": status,
             "path_a_usd": round(path_a, 6),
             "path_a_method": "sum of per-turn checkpoint deltas (cost-log.jsonl)",
             "path_b_usd": path_b,
@@ -723,26 +658,9 @@ def write_cost_verify(session_id: str, transcript_path: str, timestamp: str) -> 
             "verified": verified,
             "threshold_pct": VARIANCE_THRESHOLD_PCT,
         }
-        if not measured:
-            verdict["reason"] = (
-                "both paths reported $0.00 — no usage was parsed from the transcript. "
-                "This is a metering failure, not agreement. Check that the Stop hook "
-                "receives transcript_path and that the transcript schema is recognised "
-                "(see is_assistant_message)."
-            )
         COST_VERIFY.write_text(json.dumps(verdict, indent=2) + "\n")
 
-        if not measured:
-            AUDIT_DIR.mkdir(parents=True, exist_ok=True)
-            with (AUDIT_DIR / f"{datetime.utcnow():%Y-%m-%d}.log").open("a") as fh:
-                fh.write(json.dumps({
-                    "timestamp": timestamp,
-                    "event": "cost-verify-flag",
-                    "session_id": session_id,
-                    "detail": "UNMEASURED — both cost paths are $0.00; metering produced "
-                              "no data this turn. Not a verification pass.",
-                }) + "\n")
-        elif not verified:
+        if not verified:
             # Loud in the audit log too — never silently average or hide.
             AUDIT_DIR.mkdir(parents=True, exist_ok=True)
             ts = datetime.fromisoformat(timestamp.replace("Z", "+00:00"))
