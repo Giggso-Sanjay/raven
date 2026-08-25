@@ -37,26 +37,7 @@ READ_ONLY_GIT_SUBCOMMANDS = {
 
 
 def repo_root() -> str:
-    """Resolve the project root: CLAUDE_PROJECT_DIR, else walk up to the nearest .git.
-
-    The old `or os.getcwd()` fallback is the cwd bug class JOURNEY §8 lesson 1 was
-    written about (9de4131 — the phantom guard/guard/.raven/ folder). Verified live:
-    a session working in mock-endpoint wrote .push-notice-shown into a DIFFERENT
-    project's .raven/, so "once per session" silently tracked the wrong directory and
-    os.makedirs created a stray .raven/ tree there. Every other script in this engine
-    walks to .git; this one did not.
-    """
-    env_root = os.environ.get("CLAUDE_PROJECT_DIR")
-    if env_root:
-        return env_root
-    d = os.getcwd()
-    while True:
-        if os.path.isdir(os.path.join(d, ".git")):
-            return d
-        parent = os.path.dirname(d)
-        if parent == d:  # filesystem root — no repo found
-            return os.getcwd()
-        d = parent
+    return os.environ.get("CLAUDE_PROJECT_DIR") or os.getcwd()
 
 
 def marker_path() -> str:
@@ -85,28 +66,7 @@ def bash_is_read_only(command: str) -> bool:
     return True
 
 
-def reset_markers() -> None:
-    """Clear the per-session flags using THIS script's root resolution.
-
-    SessionStart used a raw `rm -f "${CLAUDE_PROJECT_DIR:-.}/.raven/..."`, whose `.`
-    fallback is cwd with no .git walk — a different answer from repo_root(). Write and
-    wipe could therefore target different directories, leaving a stale marker that
-    suppressed the reminder forever in one project while another got a stray .raven/.
-    One resolver, one truth.
-    """
-    root = repo_root()
-    for name in (".push-mode", ".push-approved", ".push-notice-shown"):
-        try:
-            os.remove(os.path.join(root, ".raven", name))
-        except OSError:
-            pass  # absent is the normal case
-
-
 def main() -> None:
-    if "--reset" in sys.argv:
-        reset_markers()
-        sys.exit(0)
-
     payload = json.load(sys.stdin)
     tool = payload.get("tool_name", "")
 
