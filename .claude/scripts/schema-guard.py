@@ -1,1 +1,1 @@
-../../scripts/schema-guard.py
+../../scripts/guards/schema-guard.py

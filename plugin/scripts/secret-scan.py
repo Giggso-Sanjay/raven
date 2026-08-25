@@ -1,1 +1,1 @@
-/Users/giggso/AntiGravity_Projects/SHAY-ROLLS/CLAUDE/RAVEN/raven-core/secret-scan.py
+../../scripts/guards/secret-scan.py
