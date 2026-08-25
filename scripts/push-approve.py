@@ -69,30 +69,15 @@ def write_file(path: str, content: str) -> None:
         fh.write(content)
 
 
-def clear_turn_marker() -> None:
-    """Re-arm the advisory reminder for the new turn.
-
-    This is what makes "one reminder per turn" work with no clock and no session
-    id: this hook runs on every prompt, so removing the marker here means the next
-    mutation in the turn shows the reminder exactly once, however many files it
-    touches. A multi-file refactor gets one line, not twelve.
-    """
-    try:
-        os.remove(raven_path(".push-notice-shown"))
-    except OSError:
-        pass  # absent is the normal case
-
-
 def main() -> None:
     payload = json.load(sys.stdin)
     prompt = payload.get("prompt", "") or ""
 
-    clear_turn_marker()
-
     if APPROVAL_PATTERN.search(prompt):
         write_file(raven_path(".push-approved"), prompt[:200])
         print("✅ EDUCATED PUSH: go-ahead recorded. Execute the briefing as stated, "
-              "then confirm in max 150 words (bullets + changed files).")
+              "then confirm in max 150 words (bullets + changed files). "
+              "Advisory — nothing was blocked.")
     else:
         try:
             os.remove(raven_path(".push-approved"))

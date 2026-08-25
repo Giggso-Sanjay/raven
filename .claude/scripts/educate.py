@@ -1,1 +1,0 @@
-../../scripts/educate.py

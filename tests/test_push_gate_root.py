@@ -18,23 +18,14 @@ import sys
 _ROOT = pathlib.Path(__file__).parent.parent
 GATE = _ROOT / "scripts" / "push-gate.py"
 APPROVE = _ROOT / "scripts" / "push-approve.py"
-EDUCATE = _ROOT / "scripts" / "educate.py"
 FLAG = ".push-approved"
 
 EDIT = {"tool_name": "Edit", "tool_input": {"file_path": "x.py"}, "session_id": "s1"}
 
 
-def _repo(tmp_path, name, enforced=False):
-    """Advisory is the default, so allow-vs-deny is only observable in enforced mode.
-
-    These tests are about WHERE the approval flag lands, and the deny/allow answer is
-    how we observe it — hence enforced mode as the instrument, not the subject.
-    """
+def _repo(tmp_path, name):
     d = tmp_path / name
     (d / ".git").mkdir(parents=True)
-    (d / ".raven").mkdir(exist_ok=True)
-    if enforced:
-        _run(EDUCATE, d, argv=("--enforced",))
     return d
 
 
@@ -72,7 +63,7 @@ def test_the_gate_reads_the_same_root_it_was_written_to(tmp_path):
     This is the failure that matters: a mismatch here means a real approval is
     invisible and every mutation stays denied.
     """
-    repo = _repo(tmp_path, "proj", enforced=True)
+    repo = _repo(tmp_path, "proj")
     a = repo / "src"; a.mkdir()
     b = repo / "tests"; b.mkdir()
 
@@ -83,8 +74,8 @@ def test_the_gate_reads_the_same_root_it_was_written_to(tmp_path):
 
 def test_approval_does_not_leak_into_a_sibling_repo(tmp_path):
     """Approving in B must not open the gate in A."""
-    a = _repo(tmp_path, "project-a", enforced=True)
-    b = _repo(tmp_path, "project-b", enforced=True)
+    a = _repo(tmp_path, "project-a")
+    b = _repo(tmp_path, "project-b")
 
     _run(APPROVE, b, {"prompt": "go ahead", "session_id": "s1"})
     assert (b / ".raven" / FLAG).is_file()
@@ -103,7 +94,7 @@ def test_env_var_wins_when_set(tmp_path):
 
 def test_reset_clears_using_the_same_resolver(tmp_path):
     """--reset from a subdirectory must delete the flag repo_root() would have written."""
-    repo = _repo(tmp_path, "proj", enforced=True)
+    repo = _repo(tmp_path, "proj")
     nested = repo / "src"; nested.mkdir()
 
     _run(APPROVE, nested, {"prompt": "go ahead", "session_id": "s1"})

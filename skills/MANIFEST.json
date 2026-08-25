@@ -139,15 +139,6 @@
       "status": "active",
       "purpose": "Use for ANY platform, library, or domain with no curated specialist"
     },
-    "educate": {
-      "name": "educate",
-      "paths": [
-        "skills/educate"
-      ],
-      "owner": "raven-core-team",
-      "status": "active",
-      "purpose": "Switch the Educated Push mode for this project. /educate advisory mode reminds but never blocks (the default). /educate enforced mode denies edits until you give a go-ahead. /educate status shows the "
-    },
     "fastapi-specialist": {
       "name": "fastapi-specialist",
       "paths": [
