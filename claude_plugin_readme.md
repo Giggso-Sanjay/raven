@@ -24,7 +24,7 @@ git clone https://github.com/giggsoinc/raven.git
 claude plugin install ./raven/plugin
 ```
 
-Or download `raven-plugin-v5.5.4.zip` from the [latest release](https://github.com/giggsoinc/raven/releases/latest), unzip it, and point `claude plugin install` at the extracted `plugin/` folder.
+Or download `raven-plugin-v5.5.5.zip` from the [latest release](https://github.com/giggsoinc/raven/releases/latest), unzip it, and point `claude plugin install` at the extracted `plugin/` folder.
 
 ---
 

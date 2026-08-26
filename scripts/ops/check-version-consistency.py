@@ -30,7 +30,15 @@ CHECKS = [
     ("README.md", r"^# Raven v([\d.]+)"),
     ("plugin/README.md", r"^# Raven Plugin — v([\d.]+)"),
     ("VERSIONLOG.md", r"^## v([\d.]+) — "),  # newest entry on top
-    ("plugin/make-plugin.sh", r'^VERSION="([\d.]+)"'),
+    # plugin/make-plugin.sh removed 2026-08-25: it used to hardcode a
+    # 'VERSION="X.Y.Z"' default that was immediately overwritten by a
+    # dynamic read of raven-core/VERSION one line below -- dead code kept
+    # alive only so THIS regex had something to match. That default was
+    # itself a staleness bug: after any bump, re.search finds the dead
+    # line first and reports the file stale even though the live value is
+    # correct. The dead default is now deleted; the file derives its
+    # version at runtime from the single source of truth and therefore
+    # cannot drift, so it needs no staleness check here.
     ("scripts/dashboard/core.py", r'^PLUGIN_VERSION = "([\d.]+)"'),
 ]
 
