@@ -1,1 +1,1 @@
-/Users/giggso/AntiGravity_Projects/SHAY-ROLLS/CLAUDE/RAVEN/raven-core/audit-log.py
+../../scripts/session/audit-log.py

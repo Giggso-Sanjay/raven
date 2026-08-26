@@ -5,6 +5,37 @@ adds an entry here (newest first), and must pass `scripts/check-version-consiste
 (CI: `raven-version-consistency-check`). Historical changelogs in `docs/` are
 never rewritten — this file is the roll-up index.
 
+## v5.5.5 — 2026-08-25 — Truth-gate fixes: shipped-plugin Rule 8 hole, gate 7 (patch)
+
+`plugin/scripts/session-start.py` had drifted into a 651-line stale copy of the
+750-line canonical that still auto-tiered `claude-opus-4-5` as `"high"` --
+every install auto-selected Opus on COMPLEX prompts, a live Rule 8 violation
+in the shipped artifact while the source stayed clean. `check-engine-drift.py`
+did not catch it: `plugin/scripts` was outside its `MIRRORS` list, its
+canonical lookup was flat and matched only 4 of 68 mirror entries after the
+`scripts/` reorg into subdirectories, and symlink validation ran after (not
+before) the canonical-match check, hiding 7 absolute symlinks pointing at the
+original author's home directory. Gate rewritten with recursive lookup,
+symlink-first validation, and git-index-based symlink detection (this repo
+runs `core.symlinks=false`, so Windows materializes symlinks as plain text
+files). `plugin/scripts/session-start.py` is now a relative symlink to
+canonical -- structurally cannot drift again.
+
+Also: `build_routing()`'s `fmt()` invented `anthropic/claude-sonnet-4-5` for
+every unresolved tier, making the self-check's own "no model configured"
+branch unreachable and printing false PASS on every keyless boot -- fixed to
+report `UNCONFIGURED` instead. New gate 7 (`check-counts.py`) recounts
+skills/agents/commands from disk, no `zip` dependency -- found and fixed 37
+stale count claims. `core/commands/` mirror drift (a missing file, a 2-line
+content gap) found and fixed. `check-docs-vs-reality.py` and
+`check-version-consistency.py` fixed from crashing (wrong repo-root depth;
+missing UTF-8 encoding) to actually running; `check-all-gates.py` rebuilt --
+it had gone missing, only a stale `.pyc` survived the 5.5.x restructure.
+`CONTRIBUTING.md` rewritten to describe symlink mirrors instead of "copies to
+keep in sync by hand." Tag `v5.5.5`.
+
+---
+
 ## v5.5.4 — 2026-08-23 — Session-start GitHub version check (patch)
 
 On session start and the first router turn, Raven checks github.com/giggsoinc/raven

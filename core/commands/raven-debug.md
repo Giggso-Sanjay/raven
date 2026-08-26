@@ -95,7 +95,7 @@ Run these checks in order. Output ✅ or ❌ per check.
   ⚠️   manifest.secrets.json missing — get from your architect
   ✅  .gitignore configured
   ✅  5 agents loaded: manifest-checker stack-validator style-enforcer architecture-guard db-guard
-  ✅  Skills: raven-core + 23 specialists
+  ✅  Skills: raven-core + every registered specialist
   ✅  pre-commit hook executable
   ✅  Hooks: PreToolUse PostToolUse PreCompact Notification
   ⚠️   .raven/architecture.md missing — create before first commit

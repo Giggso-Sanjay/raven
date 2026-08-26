@@ -2,7 +2,7 @@
   <img src="./assets/raven-banner.png" alt="Raven — Guardrails before you ship." width="800"/>
 </p>
 
-# Raven v5.5.4 — AI Engineering Control Plane
+# Raven v5.5.5 — AI Engineering Control Plane
 
 **Raven is the first open-source AI Engineering Control Plane — built to fight the two things AI coding actually breaks: discipline (code shipping faster than the thinking behind it) and comprehension debt (nobody remembering what the AI wrote, or why). One governed local layer routes each prompt to the right expert, blocks secrets and vulnerable code at the source, meters every token and dollar with verified math, and keeps your team's decisions in a memory that outlives the session.**
 
@@ -11,7 +11,7 @@ AI codes fast. Raven enforces Discipline — Strategic Thinking, Scalable Struct
 - **Strategic Thinking** — done by two orchestrators, picked automatically based on what you're doing:
   - **Andie** — for new work and decisions (new repo, new feature, "should we use X or Y?"). Makes a plan, attacks it from three angles (business, technical, data — plus a critic), and waits for your go before touching code.
   - **Andie-Jr** — for bugs in existing code ("why is auth failing?"). Skips the planning ceremony and runs a fast 2-round triage straight to root cause → fix, so brownfield debugging isn't slowed down by process it doesn't need.
-- **Scalable Structure** — every prompt is routed to the right expert automatically. 61 specialists, one per domain, picked by deterministic rules — and you always see a one-line note saying who's handling it and why. Works the same on one repo or a hundred.
+- **Scalable Structure** — every prompt is routed to the right expert automatically. 62 specialists, one per domain, picked by deterministic rules — and you always see a one-line note saying who's handling it and why. Works the same on one repo or a hundred.
 - **Security at Source** — guards run on your machine, at the moment code is written and committed: secrets are blocked, vulnerable libraries are blocked, and edits are blocked until the thinking actually happened. Not a report after the damage — a gate before it.
 
 All local. Zero telemetry. MIT.
@@ -20,7 +20,7 @@ All local. Zero telemetry. MIT.
 
 ## Plugin — what you can do
 
-One zip: [`plugin/raven-plugin-v5.5.4.zip`](plugin/raven-plugin-v5.5.4.zip). Same artifact for Claude Code / Desktop and other hosts (`install-host.sh`).
+One zip: [`plugin/raven-plugin-v5.5.5.zip`](plugin/raven-plugin-v5.5.5.zip). Same artifact for Claude Code / Desktop and other hosts (`install-host.sh`).
 
 | You want to | In the plugin |
 |---|---|
@@ -40,7 +40,7 @@ Calculator spend is local. Check **actual billed** cost on the Costs pane or `/r
 Raven is **not** in an Anthropic-hosted plugin marketplace — `/plugin marketplace add giggsoinc/raven` will not work. Pick one:
 
 1. **Clone + install (Claude Code)** — `git clone https://github.com/giggsoinc/raven.git && claude plugin install ./raven/plugin`
-2. **One zip** — `plugin/raven-plugin-v5.5.4.zip`. Claude: unzip then `claude plugin install <dir>`. Other hosts: `bash install-host.sh /path/to/project` (see [plugin/HOSTS.md](plugin/HOSTS.md)).
+2. **One zip** — `plugin/raven-plugin-v5.5.5.zip`. Claude: unzip then `claude plugin install <dir>`. Other hosts: `bash install-host.sh /path/to/project` (see [plugin/HOSTS.md](plugin/HOSTS.md)).
 3. **Let Claude do it** — inside a Claude Code session, ask Claude to clone the repo and run the install command for you (same two steps as Option 1, just delegated)
 
 Full walkthrough (enterprise admin upload, org-wide managed deployment, troubleshooting): [claude_plugin_readme.md](./claude_plugin_readme.md)
@@ -89,7 +89,7 @@ This is also where **Andie-Jr** earns its keep: once the manifest is in place, a
 
 - **2 orchestrators** — Andie (plan-first, one hard gate, critic voice) and Andie-Jr (brownfield debug, max 2 rounds)
 - **Deterministic routers** — repo-state + intent routing with visible one-line toasters; never routes silently
-- **61 domain skills** — FastAPI, Postgres, K8s, Terraform, Salesforce, Odoo, Oracle, AWS/GCP/Azure, and more, loaded only when your work matches
+- **62 domain skills** — FastAPI, Postgres, K8s, Terraform, Salesforce, Odoo, Oracle, AWS/GCP/Azure, and more, loaded only when your work matches
 - **Local guards** — secret scan + CVE check (CVSS >7 blocks) at every commit; optional edit gate (`raven-skill-gate`, shadow/soft/hard modes); style and architecture checks
 - **Cost-aware model routing** — prompts classified to the cheapest adequate tier; secret-laden context forced to a local model
 - **Educate (default guided)** — `.raven/educate.json` (missing = guided). Claude PreToolUse **denies** writes until `go ahead`. Other IDEs: same loop from the boot file (`educate=`). Off: `educate off` or `Lucky` (persists; SessionStart does not wipe the file). Read-only research always passes.
@@ -191,7 +191,7 @@ Pre-commit hook (.git/hooks/pre-commit)
 Commit lands (or blocked + approval flow starts)
 ```
 
-### 7 Guard Agents — What They Check
+### 10 Guard Agents — What They Check
 
 | Guard | Fires | Detects | Action |
 |-------|-------|---------|--------|
@@ -240,7 +240,7 @@ diagrams: [business view](docs/Agent_token_architecture_business.html) ·
 
 ### **Raven v5.5.4** (Current) — One plugin, every host
 
-- Single zip `raven-plugin-v5.5.4.zip`: Claude `.claude-plugin` **plus** `hosts/` + `install-host.sh` for Grok, Codex, Cursor, Windsurf, VS Code, AntiGravity, Gemini, Replit. First-load UX unified across IDEs.
+- Single zip `raven-plugin-v5.5.5.zip`: Claude `.claude-plugin` **plus** `hosts/` + `install-host.sh` for Grok, Codex, Cursor, Windsurf, VS Code, AntiGravity, Gemini, Replit. First-load UX unified across IDEs.
 - Engine scripts in the zip (`session/`, `routing/`, `memory/`, `dashboard/`) — not a Claude-only subset.
 - Dashboard: Overview-first, repo cost by IDE, graph search, open-file via local server.
 
@@ -268,7 +268,7 @@ The engine applied to itself: unified script trees + CI drift gates, docs-vs-rea
 **Maintained from v4.0:**
 - Andie Drama mode (3-panelist debate on tradeoffs)
 - Andie-jr fast triage (2-round root-cause flow)
-- 61 domain skills (ML, Salesforce, Odoo, K8s, Terraform, etc.)
+- 62 domain skills (ML, Salesforce, Odoo, K8s, Terraform, etc.)
 - Commit-time secret + CVE scanning
 - Cross-session memory (`.raven/memory/`)
 - SMTP + Slack notifications
@@ -276,7 +276,7 @@ The engine applied to itself: unified script trees + CI drift gates, docs-vs-rea
 ### **Raven v4.0.0** — Honesty Pass + First Release
 
 - Rewritten README: no false claims, honest ROI section, per-persona messaging.
-- Verified 61 skills (corrected from earlier miscount).
+- Verified 62 skills (corrected from earlier miscount).
 - CLAUDE.md per-turn discipline contract at top; Raven/Lucky gate; real hook names.
 - First onboarding in Andie: brownfield self-detect vs greenfield setup (≤2 questions).
 - `/andie` + `/andie-jr` force-path commands; plugin now bundles 12 commands.
@@ -297,13 +297,13 @@ See [CHANGELOG.md](CHANGELOG.md) for v3.x and earlier.
 
 ## Other Install Paths
 
-**One ZIP (all hosts):** [`plugin/raven-plugin-v5.5.4.zip`](plugin/raven-plugin-v5.5.4.zip). Claude Desktop: Settings → Extensions → Add plugin. Other IDEs: `bash install-host.sh` (see [plugin/HOSTS.md](plugin/HOSTS.md)).
+**One ZIP (all hosts):** [`plugin/raven-plugin-v5.5.5.zip`](plugin/raven-plugin-v5.5.5.zip). Claude Desktop: Settings → Extensions → Add plugin. Other IDEs: `bash install-host.sh` (see [plugin/HOSTS.md](plugin/HOSTS.md)).
 
 **From source:**
 
 ```bash
 git clone https://github.com/giggsoinc/raven.git
-cd raven && bash plugin/make-plugin.sh   # builds plugin/raven-plugin-v5.5.4.zip
+cd raven && bash plugin/make-plugin.sh   # builds plugin/raven-plugin-v5.5.5.zip
 ```
 
 ---
